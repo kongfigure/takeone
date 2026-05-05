@@ -70,6 +70,9 @@ export default function Practice() {
   const [camError, setCamError] = useState(null)
   const [shuffleHover, setShuffleHover] = useState(false)
   const [shuffleActive, setShuffleActive] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [recording, setRecording] = useState(false)
 
   const videoRef = useRef(null)
 
@@ -86,6 +89,11 @@ export default function Practice() {
   }, [])
 
   const shuffle = () => setPrompt(p => randomPrompt(mode, p))
+
+  const handleRecord = () => {
+    if (!recording) setNotesOpen(false)
+    setRecording(r => !r)
+  }
 
   return (
     <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
@@ -114,7 +122,7 @@ export default function Practice() {
       <main className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 flex flex-col gap-6">
 
         {/* Prompt card */}
-        <div className="bg-white rounded-2xl border-2 p-8" style={{ borderColor: config.color + 'aa' }}>
+        <div className="bg-white rounded-2xl border-2 p-8 mt-10" style={{ borderColor: config.color + 'aa' }}>
           <div className="flex items-start justify-between gap-6">
             <p className="text-base font-semibold text-ink leading-relaxed flex-1">
               {prompt}
@@ -144,6 +152,40 @@ export default function Practice() {
           <p className="text-xs text-ink-light mt-4">Read the prompt, then hit record when you're ready.</p>
         </div>
 
+        {/* Notes / Script */}
+        <div className="bg-white rounded-2xl border-2 overflow-hidden" style={{ borderColor: config.color + 'aa' }}>
+          <button
+            onClick={() => setNotesOpen(o => !o)}
+            className="w-full flex items-center justify-between px-5 py-3.5"
+            style={{ cursor: 'pointer' }}
+          >
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9.5 1.5l3 3L4 13H1v-3L9.5 1.5z" stroke={config.color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="text-sm font-semibold" style={{ color: config.color }}>Notes / Script</span>
+            </div>
+            <svg
+              width="14" height="14" viewBox="0 0 14 14" fill="none"
+              style={{ transform: notesOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 200ms ease' }}
+            >
+              <path d="M2 5l5 5 5-5" stroke={config.color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          <div style={{ maxHeight: notesOpen ? '200px' : '0', overflow: 'hidden', transition: 'max-height 250ms ease' }}>
+            <div className="px-5 pb-4 pt-1">
+              <textarea
+                placeholder="Add notes or script..."
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={4}
+                className="w-full resize-none text-sm text-ink leading-relaxed outline-none bg-transparent placeholder:text-ink-light font-sans"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Webcam feed */}
         <div className="flex-1 rounded-2xl overflow-hidden border border-blush-border bg-[#1a0a07] relative min-h-64">
           {camError ? (
@@ -165,10 +207,14 @@ export default function Practice() {
         {/* Record button */}
         <div className="flex justify-center pb-4">
           <button
+            onClick={handleRecord}
             className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 hover:scale-110 active:scale-90 cursor-pointer"
             style={{ backgroundColor: config.color }}
           >
-            <div className="w-7 h-7 bg-white rounded-full" />
+            {recording
+              ? <div className="w-6 h-6 bg-white rounded-md" />
+              : <div className="w-7 h-7 bg-white rounded-full" />
+            }
           </button>
         </div>
 
