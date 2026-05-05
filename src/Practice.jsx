@@ -5,20 +5,23 @@ const modeConfig = {
   creator: {
     label: 'Creator',
     emoji: '🎥',
-    color: '#e86a52',
-    lightBg: '#fff5f2',
+    color: '#D4687A',
+    headerColor: '#DC8595',
+    pageBg: '#FFF0F3',
   },
   interview: {
     label: 'Interview',
     emoji: '💼',
     color: '#4a6594',
-    lightBg: '#f0f4fa',
+    headerColor: '#849EC0',
+    pageBg: '#EEF2F8',
   },
   voiceover: {
     label: 'Voiceover',
     emoji: '🎙️',
     color: '#8b76b8',
-    lightBg: '#f5f2fc',
+    headerColor: '#B2A4D2',
+    pageBg: '#F2EEFF',
   },
 }
 
@@ -65,6 +68,8 @@ export default function Practice() {
 
   const [prompt, setPrompt] = useState(() => randomPrompt(mode, null))
   const [camError, setCamError] = useState(null)
+  const [shuffleHover, setShuffleHover] = useState(false)
+  const [shuffleActive, setShuffleActive] = useState(false)
 
   const videoRef = useRef(null)
 
@@ -83,22 +88,23 @@ export default function Practice() {
   const shuffle = () => setPrompt(p => randomPrompt(mode, p))
 
   return (
-    <div className="min-h-screen bg-cream font-sans flex flex-col">
+    <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
 
       {/* Header */}
-      <header className="border-b border-blush-border px-6 py-4" style={{ backgroundColor: config.lightBg }}>
+      <header className="px-6 py-4" style={{ backgroundColor: config.headerColor }}>
         <div className="max-w-2xl mx-auto flex items-center gap-4">
           <button
             onClick={() => navigate('/')}
-            className="w-9 h-9 rounded-xl border border-blush-border flex items-center justify-center hover:bg-blush transition-colors cursor-pointer bg-white"
+            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
+            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 3L5 8l5 5" stroke="#1a0a07" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 3L5 8l5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
           <div className="flex items-center gap-2">
             <span className="text-xl">{config.emoji}</span>
-            <span className="text-lg font-extrabold tracking-tight" style={{ color: config.color }}>
+            <span className="text-lg font-extrabold tracking-tight text-white">
               {config.label}
             </span>
           </div>
@@ -108,23 +114,34 @@ export default function Practice() {
       <main className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 flex flex-col gap-6">
 
         {/* Prompt card */}
-        <div className="bg-white rounded-2xl border border-blush-border p-6">
-          <div className="flex items-start justify-between gap-4">
+        <div className="bg-white rounded-2xl border-2 p-8" style={{ borderColor: config.color + 'aa' }}>
+          <div className="flex items-start justify-between gap-6">
             <p className="text-base font-semibold text-ink leading-relaxed flex-1">
               {prompt}
             </p>
             <button
               onClick={shuffle}
               title="Shuffle prompt"
-              className="shrink-0 w-9 h-9 rounded-xl border border-blush-border flex items-center justify-center hover:bg-blush transition-colors cursor-pointer"
+              onMouseEnter={() => setShuffleHover(true)}
+              onMouseLeave={() => { setShuffleHover(false); setShuffleActive(false) }}
+              onMouseDown={() => setShuffleActive(true)}
+              onMouseUp={() => setShuffleActive(false)}
+              style={{
+                cursor: 'pointer',
+                transform: shuffleActive ? 'scale(0.88)' : shuffleHover ? 'scale(1.12)' : 'scale(1)',
+                backgroundColor: shuffleHover ? config.color + '18' : 'white',
+                borderColor: shuffleHover ? config.color : config.color + '55',
+                transition: 'transform 120ms ease, background-color 120ms ease, border-color 120ms ease',
+              }}
+              className="shrink-0 w-9 h-9 rounded-xl border-2 flex items-center justify-center"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2 5h9.5M2 11h9.5" stroke="#6b3d34" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M10 3l3 2-3 2M10 9l3 2-3 2" stroke="#6b3d34" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 5h9.5M2 11h9.5" stroke={config.color} strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M10 3l3 2-3 2M10 9l3 2-3 2" stroke={config.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
           </div>
-          <p className="text-xs text-ink-light mt-3">Read the prompt, then hit record when you're ready.</p>
+          <p className="text-xs text-ink-light mt-4">Read the prompt, then hit record when you're ready.</p>
         </div>
 
         {/* Webcam feed */}
@@ -148,7 +165,7 @@ export default function Practice() {
         {/* Record button */}
         <div className="flex justify-center pb-4">
           <button
-            className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
+            className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 hover:scale-110 active:scale-90 cursor-pointer"
             style={{ backgroundColor: config.color }}
           >
             <div className="w-7 h-7 bg-white rounded-full" />
