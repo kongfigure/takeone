@@ -1,8 +1,11 @@
+import { Routes, Route, useNavigate } from 'react-router-dom'
+import Practice from './Practice.jsx'
+
 const recentSessions = [
-  { mode: 'Creator',   emoji: '🎥', date: 'Today, 2:14 PM',      duration: '4 min', score: 82 },
-  { mode: 'Interview', emoji: '💼', date: 'Yesterday, 10:30 AM',  duration: '7 min', score: 76 },
-  { mode: 'Voiceover', emoji: '🎙️', date: 'May 3, 9:05 AM',      duration: '3 min', score: 88 },
-  { mode: 'Creator',   emoji: '🎥', date: 'May 2, 4:45 PM',       duration: '5 min', score: 71 },
+  { mode: 'Creator',   emoji: '🎥', date: 'Today, 2:14 PM',     duration: '4 min', score: 82 },
+  { mode: 'Interview', emoji: '💼', date: 'Yesterday, 10:30 AM', duration: '7 min', score: 76 },
+  { mode: 'Voiceover', emoji: '🎙️', date: 'May 3, 9:05 AM',     duration: '3 min', score: 88 },
+  { mode: 'Creator',   emoji: '🎥', date: 'May 2, 4:45 PM',      duration: '5 min', score: 71 },
 ]
 
 function getGreeting() {
@@ -48,9 +51,13 @@ function StatCard({ label, value, sub }) {
   )
 }
 
-function ModeButton({ emoji, label }) {
+function ModeButton({ emoji, label, mode }) {
+  const navigate = useNavigate()
   return (
-    <button className="flex-1 flex items-center justify-center gap-2 bg-blush hover:bg-blush-dark border border-blush-border text-ink font-semibold text-sm py-3.5 rounded-xl transition-colors cursor-pointer">
+    <button
+      onClick={() => navigate(`/practice/${mode}`)}
+      className="flex-1 flex items-center justify-center gap-2 bg-blush hover:bg-blush-dark border border-blush-border text-ink font-semibold text-sm py-3.5 rounded-xl transition-colors cursor-pointer"
+    >
       <span>{emoji}</span>
       <span>{label}</span>
     </button>
@@ -75,13 +82,12 @@ function SessionRow({ mode, emoji, date, duration, score }) {
   )
 }
 
-export default function App() {
+function Dashboard() {
   return (
     <div className="min-h-screen bg-cream font-sans">
       <Header />
       <main className="max-w-2xl mx-auto px-6 py-10">
 
-        {/* Greeting */}
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl font-extrabold text-ink mb-1">
             {getGreeting()}
@@ -89,26 +95,23 @@ export default function App() {
           <p className="text-sm text-ink-mid">Ready for today's take?</p>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <StatCard label="Day streak"   value="12" sub="Keep it up 🔥" />
-          <StatCard label="Confidence"   value="84" sub="↑ 3 this week" />
-          <StatCard label="Sessions"     value="47" sub="All time" />
+          <StatCard label="Day streak" value="12" sub="Keep it up 🔥" />
+          <StatCard label="Confidence" value="84" sub="↑ 3 this week" />
+          <StatCard label="Sessions"   value="47" sub="All time" />
         </div>
 
-        {/* Start a session */}
         <div className="mb-8">
           <p className="text-xs font-semibold text-ink-light uppercase tracking-widest mb-3">
             Start a session
           </p>
           <div className="flex gap-3">
-            <ModeButton emoji="🎥" label="Creator" />
-            <ModeButton emoji="💼" label="Interview" />
-            <ModeButton emoji="🎙️" label="Voiceover" />
+            <ModeButton emoji="🎥" label="Creator"   mode="creator" />
+            <ModeButton emoji="💼" label="Interview" mode="interview" />
+            <ModeButton emoji="🎙️" label="Voiceover" mode="voiceover" />
           </div>
         </div>
 
-        {/* Recent sessions */}
         <div>
           <p className="text-xs font-semibold text-ink-light uppercase tracking-widest mb-3">
             Recent sessions
@@ -122,5 +125,14 @@ export default function App() {
 
       </main>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/practice/:mode" element={<Practice />} />
+    </Routes>
   )
 }
