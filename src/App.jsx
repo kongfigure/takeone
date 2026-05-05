@@ -1,37 +1,21 @@
-const modes = [
-  {
-    emoji: '🎥',
-    tag: 'Creator',
-    title: 'For creators & content makers',
-    description:
-      'Build the habit of showing up on camera. Practice your hook, your energy, and your presence — for YouTube, TikTok, Instagram, or anywhere you create.',
-    bg: 'bg-[#fff5f2]',
-    tagBg: 'bg-[#fce8e2] text-[#7b3a2e]',
-  },
-  {
-    emoji: '💼',
-    tag: 'Interview',
-    title: 'For job seekers & professionals',
-    description:
-      'Stop rehearsing in your head and start rehearsing on screen. Nail your composure, eye contact, and delivery before it really counts.',
-    bg: 'bg-white',
-    tagBg: 'bg-[#fce8e2] text-[#7b3a2e]',
-  },
-  {
-    emoji: '🎙️',
-    tag: 'Voiceover',
-    title: 'For voice & narration work',
-    description:
-      'Refine your pacing, warmth, and clarity. Whether it\'s an ad read, podcast, or explainer — sound like yourself at your very best.',
-    bg: 'bg-[#fff5f2]',
-    tagBg: 'bg-[#fce8e2] text-[#7b3a2e]',
-  },
+const recentSessions = [
+  { mode: 'Creator',   emoji: '🎥', date: 'Today, 2:14 PM',      duration: '4 min', score: 82 },
+  { mode: 'Interview', emoji: '💼', date: 'Yesterday, 10:30 AM',  duration: '7 min', score: 76 },
+  { mode: 'Voiceover', emoji: '🎙️', date: 'May 3, 9:05 AM',      duration: '3 min', score: 88 },
+  { mode: 'Creator',   emoji: '🎥', date: 'May 2, 4:45 PM',       duration: '5 min', score: 71 },
 ]
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning.'
+  if (h < 17) return 'Good afternoon.'
+  return 'Good evening.'
+}
 
 function Header() {
   return (
     <header className="bg-cream border-b border-blush-border px-6 py-4">
-      <div className="max-w-5xl mx-auto flex items-center justify-between">
+      <div className="max-w-2xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-coral rounded-lg flex items-center justify-center shrink-0">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -54,20 +38,39 @@ function Header() {
   )
 }
 
-function ModeCard({ emoji, tag, title, description, bg, tagBg }) {
+function StatCard({ label, value, sub }) {
   return (
-    <div
-      className={`${bg} rounded-2xl p-8 border border-blush-border hover:-translate-y-1 hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col`}
-    >
-      <div className="text-4xl mb-5">{emoji}</div>
-      <span className={`inline-flex items-center text-xs font-semibold px-3 py-1 rounded-full mb-4 w-fit ${tagBg}`}>
-        {tag}
-      </span>
-      <h3 className="text-lg font-bold text-ink mb-3 leading-snug">{title}</h3>
-      <p className="text-ink-mid text-sm leading-relaxed mb-6 flex-1">{description}</p>
-      <button className="w-full bg-coral hover:bg-coral-dark text-white font-semibold text-sm py-3 rounded-full transition-colors cursor-pointer">
-        Start practice
-      </button>
+    <div className="bg-white rounded-2xl p-5 border border-blush-border flex flex-col gap-0.5">
+      <span className="text-2xl font-extrabold text-ink leading-none">{value}</span>
+      <span className="text-sm font-semibold text-ink mt-1">{label}</span>
+      <span className="text-xs text-ink-light">{sub}</span>
+    </div>
+  )
+}
+
+function ModeButton({ emoji, label }) {
+  return (
+    <button className="flex-1 flex items-center justify-center gap-2 bg-blush hover:bg-blush-dark border border-blush-border text-ink font-semibold text-sm py-3.5 rounded-xl transition-colors cursor-pointer">
+      <span>{emoji}</span>
+      <span>{label}</span>
+    </button>
+  )
+}
+
+function SessionRow({ mode, emoji, date, duration, score }) {
+  return (
+    <div className="flex items-center gap-4 py-3.5">
+      <div className="w-9 h-9 bg-blush rounded-xl flex items-center justify-center text-lg shrink-0">
+        {emoji}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-ink">{mode}</p>
+        <p className="text-xs text-ink-light">{date} · {duration}</p>
+      </div>
+      <div className="flex flex-col items-end">
+        <span className="text-sm font-bold text-coral">{score}</span>
+        <span className="text-xs text-ink-light">score</span>
+      </div>
     </div>
   )
 }
@@ -76,21 +79,47 @@ export default function App() {
   return (
     <div className="min-h-screen bg-cream font-sans">
       <Header />
-      <main className="max-w-5xl mx-auto px-6 py-12">
-        <div className="mb-10">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-ink tracking-tight mb-2">
-            What are you practicing today?
+      <main className="max-w-2xl mx-auto px-6 py-10">
+
+        {/* Greeting */}
+        <div className="mb-8">
+          <h1 className="text-2xl md:text-3xl font-extrabold text-ink mb-1">
+            {getGreeting()}
           </h1>
-          <p className="text-base text-ink-mid">
-            Choose a mode to get started. Your camera is ready when you are.
-          </p>
+          <p className="text-sm text-ink-mid">Ready for today's take?</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {modes.map((mode) => (
-            <ModeCard key={mode.tag} {...mode} />
-          ))}
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <StatCard label="Day streak"   value="12" sub="Keep it up 🔥" />
+          <StatCard label="Confidence"   value="84" sub="↑ 3 this week" />
+          <StatCard label="Sessions"     value="47" sub="All time" />
         </div>
+
+        {/* Start a session */}
+        <div className="mb-8">
+          <p className="text-xs font-semibold text-ink-light uppercase tracking-widest mb-3">
+            Start a session
+          </p>
+          <div className="flex gap-3">
+            <ModeButton emoji="🎥" label="Creator" />
+            <ModeButton emoji="💼" label="Interview" />
+            <ModeButton emoji="🎙️" label="Voiceover" />
+          </div>
+        </div>
+
+        {/* Recent sessions */}
+        <div>
+          <p className="text-xs font-semibold text-ink-light uppercase tracking-widest mb-3">
+            Recent sessions
+          </p>
+          <div className="bg-white rounded-2xl border border-blush-border px-5 divide-y divide-blush-border">
+            {recentSessions.map((s, i) => (
+              <SessionRow key={i} {...s} />
+            ))}
+          </div>
+        </div>
+
       </main>
     </div>
   )
