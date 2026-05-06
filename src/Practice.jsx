@@ -61,6 +61,25 @@ function randomPrompt(mode, current) {
   return available[Math.floor(Math.random() * available.length)] ?? list[0]
 }
 
+function getSupportedMimeType(audio = false) {
+  const types = audio
+    ? ['audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+    : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+  return types.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
+}
+
+function mimeToExt(mimeType) {
+  if (mimeType.startsWith('video/mp4')) return 'mp4'
+  if (mimeType.startsWith('audio/mp4')) return 'm4a'
+  if (mimeType.startsWith('audio/ogg')) return 'ogg'
+  return 'webm'
+}
+
+function formatTime(s) {
+  const m = Math.floor(s / 60)
+  return `${m}:${String(s % 60).padStart(2, '0')}`
+}
+
 const BAR_COUNT = 48
 
 function Waveform({ analyser, color }) {
@@ -77,31 +96,25 @@ function Waveform({ analyser, color }) {
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H)
-
       for (let i = 0; i < BAR_COUNT; i++) {
         const x = i * (barW + gap)
         let barH, alpha
-
         if (analyser) {
           const data = new Uint8Array(analyser.frequencyBinCount)
           analyser.getByteFrequencyData(data)
-          const raw = data[Math.floor((i / BAR_COUNT) * data.length)]
-          const norm = raw / 255
+          const norm = data[Math.floor((i / BAR_COUNT) * data.length)] / 255
           barH = Math.max(4, norm * H * 0.85)
           alpha = 0.4 + norm * 0.6
         } else {
-          // idle: gentle undulating sine
           const t = Date.now() / 900
           barH = 4 + Math.abs(Math.sin(i * 0.38 + t)) * 7
           alpha = 0.22
         }
-
         const y = (H - barH) / 2
         ctx.globalAlpha = alpha
         ctx.fillStyle = color
         ctx.fillRect(x, y, barW, barH)
       }
-
       ctx.globalAlpha = 1
       animRef.current = requestAnimationFrame(draw)
     }
@@ -135,26 +148,37 @@ export default function Practice() {
   const [notes, setNotes] = useState('')
   const [recording, setRecording] = useState(false)
   const [analyser, setAnalyser] = useState(null)
+  const [recordedUrl, setRecordedUrl] = useState(null)
+  const [recordedMime, setRecordedMime] = useState('')
+  const [elapsed, setElapsed] = useState(0)
 
   const videoRef = useRef(null)
+  const streamRef = useRef(null)
   const audioCtxRef = useRef(null)
   const audioStreamRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const timerRef = useRef(null)
 
-  // Camera: non-voiceover modes only
+  // Camera + audio for video modes
   useEffect(() => {
     if (isVoiceover) return
     let stream
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: false })
+      .getUserMedia({ video: true, audio: true })
       .then(s => {
         stream = s
+        streamRef.current = s
         if (videoRef.current) videoRef.current.srcObject = s
       })
       .catch(() => setCamError('Camera access denied. Please allow camera permissions and try again.'))
-    return () => stream?.getTracks().forEach(t => t.stop())
+    return () => {
+      stream?.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
   }, [isVoiceover])
 
-  // Microphone: voiceover only, keyed to recording state
+  // Voiceover: mic + analyser + MediaRecorder, keyed to recording state
   useEffect(() => {
     if (!isVoiceover) return
 
@@ -163,20 +187,36 @@ export default function Practice() {
         .getUserMedia({ audio: true, video: false })
         .then(stream => {
           audioStreamRef.current = stream
-          const AudioContext = window.AudioContext || window.webkitAudioContext
-          const ctx = new AudioContext()
+
+          const AudioCtx = window.AudioContext || window.webkitAudioContext
+          const ctx = new AudioCtx()
           audioCtxRef.current = ctx
           const node = ctx.createAnalyser()
           node.fftSize = 128
           node.smoothingTimeConstant = 0.8
           ctx.createMediaStreamSource(stream).connect(node)
           setAnalyser(node)
+
+          const mimeType = getSupportedMimeType(true)
+          const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+          chunksRef.current = []
+          mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+          mr.onstop = () => {
+            const blob = new Blob(chunksRef.current, { type: mr.mimeType })
+            setRecordedUrl(URL.createObjectURL(blob))
+            setRecordedMime(mr.mimeType)
+          }
+          mr.start()
+          mediaRecorderRef.current = mr
         })
         .catch(() => {
           setAudioError('Microphone access denied. Please allow microphone permissions and try again.')
           setRecording(false)
         })
     } else {
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
       audioStreamRef.current?.getTracks().forEach(t => t.stop())
       audioCtxRef.current?.close()
       audioStreamRef.current = null
@@ -185,12 +225,60 @@ export default function Practice() {
     }
   }, [recording, isVoiceover])
 
+  // Timer
+  useEffect(() => {
+    if (recording) {
+      setElapsed(0)
+      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+    } else {
+      clearInterval(timerRef.current)
+    }
+    return () => clearInterval(timerRef.current)
+  }, [recording])
+
+  const startVideoRecording = () => {
+    const stream = streamRef.current
+    if (!stream) return
+    const mimeType = getSupportedMimeType(false)
+    const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+    chunksRef.current = []
+    mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+    mr.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: mr.mimeType })
+      setRecordedUrl(URL.createObjectURL(blob))
+      setRecordedMime(mr.mimeType)
+    }
+    mr.start()
+    mediaRecorderRef.current = mr
+  }
+
   const shuffle = () => setPrompt(p => randomPrompt(mode, p))
 
   const handleRecord = () => {
-    if (!recording) setNotesOpen(false)
-    setRecording(r => !r)
+    if (recording) {
+      if (!isVoiceover && mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+      setRecording(false)
+    } else {
+      setNotesOpen(false)
+      if (recordedUrl) {
+        URL.revokeObjectURL(recordedUrl)
+        setRecordedUrl(null)
+        setRecordedMime('')
+      }
+      if (!isVoiceover) startVideoRecording()
+      setRecording(true)
+    }
   }
+
+  const resetRecording = () => {
+    if (recordedUrl) URL.revokeObjectURL(recordedUrl)
+    setRecordedUrl(null)
+    setRecordedMime('')
+  }
+
+  const downloadName = `take-${mode}.${mimeToExt(recordedMime)}`
 
   return (
     <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
@@ -217,9 +305,7 @@ export default function Practice() {
             ) : (
               <span className="text-xl">{config.emoji}</span>
             )}
-            <span className="text-lg font-extrabold tracking-tight text-white">
-              {config.label}
-            </span>
+            <span className="text-lg font-extrabold tracking-tight text-white">{config.label}</span>
           </div>
         </div>
       </header>
@@ -229,9 +315,7 @@ export default function Practice() {
         {/* Prompt card */}
         <div className="bg-white rounded-2xl border-2 p-8 mt-10" style={{ borderColor: config.color + 'aa' }}>
           <div className="flex items-start justify-between gap-6">
-            <p className="text-base font-semibold text-ink leading-relaxed flex-1">
-              {prompt}
-            </p>
+            <p className="text-base font-semibold text-ink leading-relaxed flex-1">{prompt}</p>
             <button
               onClick={shuffle}
               title="Shuffle prompt"
@@ -295,52 +379,94 @@ export default function Practice() {
           </div>
         </div>
 
-        {/* Camera feed or waveform */}
-        {isVoiceover ? (
+        {/* Media area: live feed → playback */}
+        {recordedUrl ? (
+          <div
+            className="flex-1 rounded-2xl overflow-hidden border-2 relative min-h-48 bg-white flex flex-col items-center justify-center"
+            style={{ borderColor: config.color + '55' }}
+          >
+            {isVoiceover ? (
+              <div className="w-full px-8 flex flex-col items-center gap-4">
+                <p className="text-sm font-semibold" style={{ color: config.color }}>Your take is ready</p>
+                <audio src={recordedUrl} controls className="w-full" />
+              </div>
+            ) : (
+              <video src={recordedUrl} controls className="w-full h-full object-contain" />
+            )}
+          </div>
+        ) : isVoiceover ? (
           <div
             className="flex-1 rounded-2xl overflow-hidden border-2 relative min-h-48"
             style={{ borderColor: config.color + '55', backgroundColor: config.pageBg }}
           >
-            {audioError ? (
-              <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-                <p className="text-sm font-medium" style={{ color: config.color }}>{audioError}</p>
+            {audioError
+              ? <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
+                  <p className="text-sm font-medium" style={{ color: config.color }}>{audioError}</p>
+                </div>
+              : <Waveform analyser={analyser} color={config.color} />
+            }
+            {recording && (
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-white text-xs font-semibold tracking-wide">REC</span>
               </div>
-            ) : (
-              <Waveform analyser={analyser} color={config.color} />
             )}
           </div>
         ) : (
           <div className="flex-1 rounded-2xl overflow-hidden border border-blush-border bg-[#1a0a07] relative min-h-64">
-            {camError ? (
-              <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-                <p className="text-sm text-blush-dark">{camError}</p>
+            {camError
+              ? <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
+                  <p className="text-sm text-blush-dark">{camError}</p>
+                </div>
+              : <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+            }
+            {recording && (
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-white text-xs font-semibold tracking-wide">REC</span>
               </div>
-            ) : (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-                style={{ transform: 'scaleX(-1)' }}
-              />
             )}
           </div>
         )}
 
-        {/* Record button */}
-        <div className="flex justify-center pb-4">
-          <button
-            onClick={handleRecord}
-            className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 hover:scale-110 active:scale-90 cursor-pointer"
-            style={{ backgroundColor: config.color }}
-          >
-            {recording
-              ? <div className="w-6 h-6 bg-white rounded-md" />
-              : <div className="w-7 h-7 bg-white rounded-full" />
-            }
-          </button>
-        </div>
+        {/* Bottom controls */}
+        {recordedUrl ? (
+          <div className="flex gap-3 pb-4">
+            <button
+              onClick={resetRecording}
+              className="flex-1 py-3.5 rounded-full border-2 font-semibold text-sm transition-all duration-150 active:scale-95 cursor-pointer"
+              style={{ borderColor: config.color, color: config.color }}
+            >
+              Record again
+            </button>
+            <a
+              href={recordedUrl}
+              download={downloadName}
+              className="flex-1 py-3.5 rounded-full font-semibold text-sm text-white text-center transition-all duration-150 active:scale-95 cursor-pointer"
+              style={{ backgroundColor: config.color }}
+            >
+              Download
+            </a>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2 pb-4">
+            {recording && (
+              <span className="text-sm font-mono font-semibold tabular-nums" style={{ color: config.color }}>
+                {formatTime(elapsed)}
+              </span>
+            )}
+            <button
+              onClick={handleRecord}
+              className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 hover:scale-110 active:scale-90 cursor-pointer"
+              style={{ backgroundColor: config.color }}
+            >
+              {recording
+                ? <div className="w-6 h-6 bg-white rounded-md" />
+                : <div className="w-7 h-7 bg-white rounded-full" />
+              }
+            </button>
+          </div>
+        )}
 
       </main>
     </div>
