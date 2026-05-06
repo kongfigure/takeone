@@ -259,9 +259,12 @@ export default function Practice() {
 
         {/* Notes / Script */}
         <div className="bg-white rounded-2xl border-2 overflow-hidden" style={{ borderColor: config.color + 'aa' }}>
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => setNotesOpen(o => !o)}
-            className="w-full flex items-center justify-between px-5 py-3.5"
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setNotesOpen(o => !o)}
+            className="flex items-center justify-between px-5 py-3.5 select-none"
             style={{ cursor: 'pointer' }}
           >
             <div className="flex items-center gap-2">
@@ -276,15 +279,17 @@ export default function Practice() {
             >
               <path d="M2 5l5 5 5-5" stroke={config.color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          </button>
-          <div style={{ maxHeight: notesOpen ? '200px' : '0', overflow: 'hidden', transition: 'max-height 250ms ease' }}>
-            <div className="px-5 pb-4 pt-1">
+          </div>
+          <div style={{ maxHeight: notesOpen ? '300px' : '0', overflow: 'hidden', transition: 'max-height 250ms ease' }}>
+            <div className="px-5 pb-5 pt-1">
               <textarea
                 placeholder="Add notes or script..."
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                rows={4}
-                className="w-full resize-none text-sm text-ink leading-relaxed outline-none bg-transparent placeholder:text-ink-light font-sans"
+                onClick={e => e.stopPropagation()}
+                rows={5}
+                className="w-full resize-none text-sm text-ink leading-relaxed bg-transparent placeholder:text-ink-light font-sans"
+                style={{ outline: 'none', boxShadow: 'none', cursor: 'text' }}
               />
             </div>
           </div>
