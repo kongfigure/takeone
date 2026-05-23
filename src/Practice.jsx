@@ -133,10 +133,95 @@ function Waveform({ analyser, color }) {
   )
 }
 
-export default function Practice() {
-  const { mode } = useParams()
-  const navigate = useNavigate()
-  const config = modeConfig[mode] ?? modeConfig.creator
+function ModeHeader({ config, mode, onBack }) {
+  const isVoiceover = mode === 'voiceover'
+  return (
+    <header className="px-6 py-4" style={{ backgroundColor: config.headerColor }}>
+      <div className="max-w-2xl mx-auto flex items-center gap-4">
+        <button
+          onClick={onBack}
+          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
+          style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <div className="flex items-center gap-2.5">
+          {isVoiceover ? (
+            <svg width="18" height="20" viewBox="0 0 18 20" fill="none">
+              <rect x="5" y="1" width="8" height="12" rx="4" fill="white" />
+              <path d="M1 10c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+              <line x1="9" y1="18" x2="9" y2="20" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <span className="text-xl">{config.emoji}</span>
+          )}
+          <span className="text-lg font-extrabold tracking-tight text-white">{config.label}</span>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function SelectScreen({ config, mode, onRecord, onUpload, navigate }) {
+  return (
+    <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
+      <ModeHeader config={config} mode={mode} onBack={() => navigate('/')} />
+
+      <main className="flex-1 max-w-2xl mx-auto w-full px-6 flex flex-col items-center justify-center gap-6">
+        <div className="text-center mb-4">
+          <p className="text-2xl font-extrabold text-ink mb-2">How do you want to start?</p>
+          <p className="text-sm text-ink-light">Choose to record a new take or upload an existing file.</p>
+        </div>
+
+        <div className="w-full flex flex-col gap-4">
+          <button
+            onClick={onRecord}
+            className="w-full flex items-center gap-5 bg-white rounded-2xl border-2 p-6 text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+            style={{ borderColor: config.color + 'aa' }}
+          >
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: config.color + '18' }}
+            >
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <circle cx="11" cy="11" r="5" fill={config.color} />
+                <circle cx="11" cy="11" r="9" stroke={config.color} strokeWidth="1.8" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-base font-bold text-ink">Record Now</p>
+              <p className="text-sm text-ink-light mt-0.5">Use your camera or mic to record a new take.</p>
+            </div>
+          </button>
+
+          <button
+            onClick={onUpload}
+            className="w-full flex items-center gap-5 bg-white rounded-2xl border-2 p-6 text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] cursor-pointer opacity-60"
+            style={{ borderColor: config.color + '55' }}
+          >
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: config.color + '10' }}
+            >
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M11 14V4M11 4L7 8M11 4l4 4" stroke={config.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M4 16v1a2 2 0 002 2h10a2 2 0 002-2v-1" stroke={config.color} strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-base font-bold text-ink">Upload</p>
+              <p className="text-sm text-ink-light mt-0.5">Upload an existing recording to review. <span className="italic">Coming soon.</span></p>
+            </div>
+          </button>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function RecordScreen({ config, mode, onBack }) {
   const isVoiceover = mode === 'voiceover'
 
   const [prompt, setPrompt] = useState(() => randomPrompt(mode, null))
@@ -282,33 +367,7 @@ export default function Practice() {
 
   return (
     <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
-
-      {/* Header */}
-      <header className="px-6 py-4" style={{ backgroundColor: config.headerColor }}>
-        <div className="max-w-2xl mx-auto flex items-center gap-4">
-          <button
-            onClick={() => navigate('/')}
-            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
-            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 3L5 8l5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <div className="flex items-center gap-2.5">
-            {isVoiceover ? (
-              <svg width="18" height="20" viewBox="0 0 18 20" fill="none">
-                <rect x="5" y="1" width="8" height="12" rx="4" fill="white" />
-                <path d="M1 10c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                <line x1="9" y1="18" x2="9" y2="20" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            ) : (
-              <span className="text-xl">{config.emoji}</span>
-            )}
-            <span className="text-lg font-extrabold tracking-tight text-white">{config.label}</span>
-          </div>
-        </div>
-      </header>
+      <ModeHeader config={config} mode={mode} onBack={onBack} />
 
       <main className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 flex flex-col gap-6">
 
@@ -470,5 +529,33 @@ export default function Practice() {
 
       </main>
     </div>
+  )
+}
+
+export default function Practice() {
+  const { mode } = useParams()
+  const navigate = useNavigate()
+  const config = modeConfig[mode] ?? modeConfig.creator
+
+  const [screen, setScreen] = useState('select')
+
+  if (screen === 'select') {
+    return (
+      <SelectScreen
+        config={config}
+        mode={mode}
+        navigate={navigate}
+        onRecord={() => setScreen('record')}
+        onUpload={() => {}}
+      />
+    )
+  }
+
+  return (
+    <RecordScreen
+      config={config}
+      mode={mode}
+      onBack={() => setScreen('select')}
+    />
   )
 }
