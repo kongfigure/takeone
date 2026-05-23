@@ -1,5 +1,6 @@
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import Practice from './Practice.jsx'
+import takeoneLogo from './assets/takeone-logo.png'
 
 const recentSessions = [
   { mode: 'Creator',   emoji: '🎥', date: 'Today, 2:14 PM',     duration: '4 min', score: 82 },
@@ -20,14 +21,8 @@ function Header() {
     <header className="bg-cream border-b border-blush-border px-6 py-4">
       <div className="max-w-2xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-coral rounded-lg flex items-center justify-center shrink-0">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="3" fill="white" />
-              <path d="M2 5.5h1.5M2 10.5h1.5M12.5 5.5H14M12.5 10.5H14" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-              <rect x="1" y="4" width="14" height="8" rx="2" stroke="white" strokeWidth="1.5" />
-            </svg>
-          </div>
-          <span className="text-xl font-bold text-ink tracking-tight">TakeOne</span>
+          <img src={takeoneLogo} alt="TakeOne" style={{ height: '40px' }} />
+          <span className="text-2xl font-bold text-ink tracking-tight">Take One</span>
         </div>
 
         <button className="w-9 h-9 bg-blush rounded-full flex items-center justify-center border border-blush-border hover:bg-blush-dark transition-colors cursor-pointer">
