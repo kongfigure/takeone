@@ -1,5 +1,6 @@
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import Practice from './Practice.jsx'
+import Collection from './Collection.jsx'
 import takeoneLogo from './assets/takeone-logo.png'
 
 const recentSessions = [
@@ -50,7 +51,7 @@ function ModeButton({ emoji, label, mode }) {
   const navigate = useNavigate()
   return (
     <button
-      onClick={() => navigate(`/practice/${mode}`)}
+      onClick={() => navigate(`/collection/${mode}`)}
       className="flex-1 flex items-center justify-center gap-2 bg-blush hover:bg-blush-dark border border-blush-border text-ink font-semibold text-sm py-3.5 rounded-xl transition-colors cursor-pointer"
     >
       <span>{emoji}</span>
@@ -127,6 +128,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Dashboard />} />
+      <Route path="/collection/:mode" element={<Collection />} />
       <Route path="/practice/:mode" element={<Practice />} />
     </Routes>
   )

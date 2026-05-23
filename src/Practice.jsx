@@ -167,7 +167,7 @@ function ModeHeader({ config, mode, onBack }) {
 function SelectScreen({ config, mode, onRecord, onUpload, navigate }) {
   return (
     <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
-      <ModeHeader config={config} mode={mode} onBack={() => navigate('/')} />
+      <ModeHeader config={config} mode={mode} onBack={() => navigate(`/collection/${mode}`)} />
 
       <main className="flex-1 max-w-2xl mx-auto w-full px-6 flex flex-col items-center justify-center gap-6">
         <div className="text-center mb-4">
