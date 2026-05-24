@@ -1,6 +1,7 @@
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import Practice from './Practice.jsx'
 import Collection from './Collection.jsx'
+import Playback from './Playback.jsx'
 import takeoneLogo from './assets/takeone-logo.png'
 
 const recentSessions = [
@@ -130,6 +131,7 @@ export default function App() {
       <Route path="/" element={<Dashboard />} />
       <Route path="/collection/:mode" element={<Collection />} />
       <Route path="/practice/:mode" element={<Practice />} />
+      <Route path="/playback/:mode/:id" element={<Playback />} />
     </Routes>
   )
 }

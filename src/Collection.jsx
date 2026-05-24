@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { getTakes, updateTake, subscribe } from './store.js'
+
 
 const modeConfig = {
   creator:   { label: 'Creator',   emoji: '🎥', color: '#D4687A', headerColor: '#DC8595', pageBg: '#FFF0F3' },
@@ -9,20 +11,6 @@ const modeConfig = {
 
 const TABS = ['All', 'Favourites', 'Strong Takes', 'Needs Work']
 
-const seedTakes = {
-  creator: [
-    { id: 'c1', name: 'Channel intro',   score: 85, favourite: true,  date: 'Today'     },
-    { id: 'c2', name: 'Morning routine', score: 72, favourite: false, date: 'Yesterday' },
-    { id: 'c3', name: 'Trend reaction',  score: 61, favourite: false, date: 'May 20'    },
-  ],
-  interview: [
-    { id: 'i1', name: 'Tell me about yourself', score: 78, favourite: false, date: 'Today'   },
-    { id: 'i2', name: 'Greatest weakness',       score: 91, favourite: true,  date: 'May 21' },
-  ],
-  voiceover: [
-    { id: 'v1', name: 'Transportation future', score: 88, favourite: true, date: 'May 22' },
-  ],
-}
 
 function scoreColor(score) {
   if (score >= 80) return '#16a34a'
@@ -61,7 +49,7 @@ function ThumbnailPlaceholder({ config, mode }) {
   )
 }
 
-function PolaroidCard({ take, config, mode, onToggleFavourite, onRename }) {
+function PolaroidCard({ take, config, mode, onToggleFavourite, onRename, onClick }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(take.name)
 
@@ -73,12 +61,13 @@ function PolaroidCard({ take, config, mode, onToggleFavourite, onRename }) {
 
   return (
     <div
-      className="bg-white flex flex-col overflow-hidden"
+      className="bg-white flex flex-col overflow-hidden cursor-pointer"
       style={{
         borderRadius: '4px',
         boxShadow: '0 2px 14px rgba(0,0,0,0.09), 0 1px 3px rgba(0,0,0,0.07)',
         border: '1px solid rgba(0,0,0,0.06)',
       }}
+      onClick={onClick}
     >
       {mode === 'voiceover' ? (
         <div
@@ -93,6 +82,8 @@ function PolaroidCard({ take, config, mode, onToggleFavourite, onRename }) {
             />
           ))}
         </div>
+      ) : take.thumbnail ? (
+        <img src={take.thumbnail} alt="" className="w-full aspect-square object-cover" />
       ) : (
         <ThumbnailPlaceholder config={config} mode={mode} />
       )}
@@ -104,6 +95,7 @@ function PolaroidCard({ take, config, mode, onToggleFavourite, onRename }) {
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onBlur={commit}
+            onClick={e => e.stopPropagation()}
             onKeyDown={e => {
               if (e.key === 'Enter') commit()
               if (e.key === 'Escape') { setDraft(take.name); setEditing(false) }
@@ -114,7 +106,7 @@ function PolaroidCard({ take, config, mode, onToggleFavourite, onRename }) {
         ) : (
           <p
             className={`font-semibold text-ink truncate cursor-text leading-snug ${mode === 'voiceover' ? 'text-sm' : 'text-xs'}`}
-            onClick={() => setEditing(true)}
+            onClick={e => { e.stopPropagation(); setEditing(true) }}
             title="Click to rename"
           >
             {take.name}
@@ -132,7 +124,7 @@ function PolaroidCard({ take, config, mode, onToggleFavourite, onRename }) {
             <span className="text-xs text-ink-light">{take.date}</span>
           </div>
           <button
-            onClick={() => onToggleFavourite(take.id)}
+            onClick={e => { e.stopPropagation(); onToggleFavourite(take.id) }}
             className="w-7 h-7 flex items-center justify-center cursor-pointer rounded-full transition-colors"
             style={{ backgroundColor: take.favourite ? config.color + '18' : 'transparent' }}
           >
@@ -255,17 +247,23 @@ export default function Collection() {
   const config = modeConfig[mode] ?? modeConfig.creator
   const isVoiceover = mode === 'voiceover'
 
-  const [takes, setTakes] = useState(seedTakes[mode] ?? [])
+  const [takes, setTakes] = useState(() => getTakes(mode))
   const [activeTab, setActiveTab] = useState('All')
   const [fabOpen, setFabOpen] = useState(false)
 
+  useEffect(() => {
+    setTakes(getTakes(mode))
+    return subscribe(() => setTakes([...getTakes(mode)]))
+  }, [mode])
+
   const filtered = filterTakes(takes, activeTab)
 
-  const toggleFavourite = id =>
-    setTakes(ts => ts.map(t => t.id === id ? { ...t, favourite: !t.favourite } : t))
+  const toggleFavourite = id => {
+    const take = takes.find(t => t.id === id)
+    if (take) updateTake(mode, id, { favourite: !take.favourite })
+  }
 
-  const rename = (id, name) =>
-    setTakes(ts => ts.map(t => t.id === id ? { ...t, name } : t))
+  const rename = (id, name) => updateTake(mode, id, { name })
 
   const goRecord = () => navigate(`/practice/${mode}`)
 
@@ -360,6 +358,7 @@ export default function Collection() {
                 mode={mode}
                 onToggleFavourite={toggleFavourite}
                 onRename={rename}
+                onClick={() => navigate(`/playback/${mode}/${take.id}`)}
               />
             ))}
           </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { addTake, getTakes } from './store.js'
 
 const modeConfig = {
   creator: {
@@ -66,13 +67,6 @@ function getSupportedMimeType(audio = false) {
     ? ['audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
     : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
   return types.find(t => MediaRecorder.isTypeSupported(t)) ?? ''
-}
-
-function mimeToExt(mimeType) {
-  if (mimeType.startsWith('video/mp4')) return 'mp4'
-  if (mimeType.startsWith('audio/mp4')) return 'm4a'
-  if (mimeType.startsWith('audio/ogg')) return 'ogg'
-  return 'webm'
 }
 
 function formatTime(s) {
@@ -222,6 +216,7 @@ function SelectScreen({ config, mode, onRecord, onUpload, navigate }) {
 }
 
 function RecordScreen({ config, mode, onBack }) {
+  const navigate = useNavigate()
   const isVoiceover = mode === 'voiceover'
 
   const [prompt, setPrompt] = useState(() => randomPrompt(mode, null))
@@ -236,6 +231,9 @@ function RecordScreen({ config, mode, onBack }) {
   const [recordedUrl, setRecordedUrl] = useState(null)
   const [recordedMime, setRecordedMime] = useState('')
   const [elapsed, setElapsed] = useState(0)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [thumbnail, setThumbnail] = useState(null)
+  const [duration, setDuration] = useState(0)
 
   const videoRef = useRef(null)
   const streamRef = useRef(null)
@@ -244,21 +242,29 @@ function RecordScreen({ config, mode, onBack }) {
   const mediaRecorderRef = useRef(null)
   const chunksRef = useRef([])
   const timerRef = useRef(null)
+  const elapsedRef = useRef(0)
 
-  // Camera + audio for video modes
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setCameraReady(false)
+  }
+
+  // Initial camera setup for video modes
   useEffect(() => {
     if (isVoiceover) return
-    let stream
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
+    let cancelled = false
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(s => {
-        stream = s
+        if (cancelled) { s.getTracks().forEach(t => t.stop()); return }
         streamRef.current = s
         if (videoRef.current) videoRef.current.srcObject = s
+        setCameraReady(true)
       })
-      .catch(() => setCamError('Camera access denied. Please allow camera permissions and try again.'))
+      .catch(() => { if (!cancelled) setCamError('Camera access denied. Please allow camera permissions and try again.') })
     return () => {
-      stream?.getTracks().forEach(t => t.stop())
+      cancelled = true
+      streamRef.current?.getTracks().forEach(t => t.stop())
       streamRef.current = null
     }
   }, [isVoiceover])
@@ -287,11 +293,14 @@ function RecordScreen({ config, mode, onBack }) {
           chunksRef.current = []
           mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
           mr.onstop = () => {
-            const blob = new Blob(chunksRef.current, { type: mr.mimeType })
-            setRecordedUrl(URL.createObjectURL(blob))
-            setRecordedMime(mr.mimeType)
+            const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
+            if (blob.size > 0) {
+              setRecordedUrl(URL.createObjectURL(blob))
+              setRecordedMime(mr.mimeType)
+            }
+            setDuration(elapsedRef.current)
           }
-          mr.start()
+          mr.start(200)
           mediaRecorderRef.current = mr
         })
         .catch(() => {
@@ -299,9 +308,9 @@ function RecordScreen({ config, mode, onBack }) {
           setRecording(false)
         })
     } else {
-      if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop()
-      }
+      try {
+        if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop()
+      } catch (_) {}
       audioStreamRef.current?.getTracks().forEach(t => t.stop())
       audioCtxRef.current?.close()
       audioStreamRef.current = null
@@ -310,16 +319,46 @@ function RecordScreen({ config, mode, onBack }) {
     }
   }, [recording, isVoiceover])
 
-  // Timer
+  // Timer — tracks elapsed and keeps elapsedRef in sync for capture in onstop callbacks
   useEffect(() => {
     if (recording) {
+      elapsedRef.current = 0
       setElapsed(0)
-      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+      timerRef.current = setInterval(() => {
+        elapsedRef.current += 1
+        setElapsed(s => s + 1)
+      }, 1000)
     } else {
       clearInterval(timerRef.current)
     }
     return () => clearInterval(timerRef.current)
   }, [recording])
+
+  // Capture thumbnail frame from recorded video
+  useEffect(() => {
+    if (!recordedUrl || isVoiceover) return
+    const vid = document.createElement('video')
+    vid.src = recordedUrl
+    vid.muted = true
+    vid.playsInline = true
+    const onSeeked = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 320
+      canvas.height = 240
+      canvas.getContext('2d').drawImage(vid, 0, 0, 320, 240)
+      setThumbnail(canvas.toDataURL('image/jpeg', 0.8))
+    }
+    vid.addEventListener('loadeddata', () => { vid.currentTime = 0.5 })
+    vid.addEventListener('seeked', onSeeked)
+    vid.load()
+    return () => vid.removeEventListener('seeked', onSeeked)
+  }, [recordedUrl, isVoiceover])
+
+  // Ref callback: attaches stream to live video whenever the element mounts or remounts
+  const liveVideoRef = el => {
+    videoRef.current = el
+    if (el && streamRef.current) el.srcObject = streamRef.current
+  }
 
   const startVideoRecording = () => {
     const stream = streamRef.current
@@ -329,11 +368,15 @@ function RecordScreen({ config, mode, onBack }) {
     chunksRef.current = []
     mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
     mr.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mr.mimeType })
-      setRecordedUrl(URL.createObjectURL(blob))
-      setRecordedMime(mr.mimeType)
+      const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'video/webm' })
+      if (blob.size > 0) {
+        setRecordedUrl(URL.createObjectURL(blob))
+        setRecordedMime(mr.mimeType)
+      }
+      setDuration(elapsedRef.current)
+      stopCamera()
     }
-    mr.start()
+    mr.start(200)
     mediaRecorderRef.current = mr
   }
 
@@ -341,29 +384,64 @@ function RecordScreen({ config, mode, onBack }) {
 
   const handleRecord = () => {
     if (recording) {
-      if (!isVoiceover && mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop()
-      }
       setRecording(false)
+      if (!isVoiceover) {
+        try {
+          if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop()
+        } catch (_) {}
+      }
     } else {
       setNotesOpen(false)
       if (recordedUrl) {
         URL.revokeObjectURL(recordedUrl)
         setRecordedUrl(null)
         setRecordedMime('')
+        setThumbnail(null)
       }
       if (!isVoiceover) startVideoRecording()
       setRecording(true)
     }
   }
 
-  const resetRecording = () => {
+  const takeAgain = async () => {
     if (recordedUrl) URL.revokeObjectURL(recordedUrl)
     setRecordedUrl(null)
     setRecordedMime('')
+    setThumbnail(null)
+    setDuration(0)
+    setElapsed(0)
+    elapsedRef.current = 0
+    if (!isVoiceover) {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        streamRef.current = s
+        // attach to video element if it's already mounted after re-render
+        if (videoRef.current) videoRef.current.srcObject = s
+        setCameraReady(true)
+        setCamError(null)
+      } catch {
+        setCamError('Camera access denied. Please allow camera permissions and try again.')
+      }
+    }
   }
 
-  const downloadName = `take-${mode}.${mimeToExt(recordedMime)}`
+  const handleSave = () => {
+    addTake(mode, {
+      id: Date.now().toString(),
+      name: `Take ${getTakes(mode).length + 1}`,
+      score: Math.floor(Math.random() * 30) + 65,
+      favourite: false,
+      date: 'Just now',
+      videoUrl: recordedUrl,
+      mimeType: recordedMime,
+      thumbnail,
+      duration,
+    })
+    // store owns the URL now — do not revoke
+    setRecordedUrl(null)
+    setRecordedMime('')
+    navigate(`/collection/${mode}`)
+  }
 
   return (
     <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
@@ -438,10 +516,10 @@ function RecordScreen({ config, mode, onBack }) {
           </div>
         </div>
 
-        {/* Media area: live feed → playback */}
+        {/* Media area — key props ensure live and playback video are always distinct DOM elements */}
         {recordedUrl ? (
           <div
-            className="flex-1 rounded-2xl overflow-hidden border-2 relative min-h-48 bg-white flex flex-col items-center justify-center"
+            className={`flex-1 rounded-2xl overflow-hidden border-2 relative min-h-48 ${isVoiceover ? 'bg-white flex flex-col items-center justify-center' : 'bg-black'}`}
             style={{ borderColor: config.color + '55' }}
           >
             {isVoiceover ? (
@@ -450,7 +528,14 @@ function RecordScreen({ config, mode, onBack }) {
                 <audio src={recordedUrl} controls className="w-full" />
               </div>
             ) : (
-              <video src={recordedUrl} controls className="w-full h-full object-contain" />
+              <video
+                key="playback"
+                src={recordedUrl}
+                controls
+                playsInline
+                className="w-full h-full object-contain"
+                style={{ maxHeight: '360px' }}
+              />
             )}
           </div>
         ) : isVoiceover ? (
@@ -477,7 +562,7 @@ function RecordScreen({ config, mode, onBack }) {
               ? <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
                   <p className="text-sm text-blush-dark">{camError}</p>
                 </div>
-              : <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+              : <video key="live" ref={liveVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
             }
             {recording && (
               <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
@@ -492,20 +577,19 @@ function RecordScreen({ config, mode, onBack }) {
         {recordedUrl ? (
           <div className="flex gap-3 pb-4">
             <button
-              onClick={resetRecording}
+              onClick={takeAgain}
               className="flex-1 py-3.5 rounded-full border-2 font-semibold text-sm transition-all duration-150 active:scale-95 cursor-pointer"
               style={{ borderColor: config.color, color: config.color }}
             >
-              Record again
+              Take Again
             </button>
-            <a
-              href={recordedUrl}
-              download={downloadName}
-              className="flex-1 py-3.5 rounded-full font-semibold text-sm text-white text-center transition-all duration-150 active:scale-95 cursor-pointer"
+            <button
+              onClick={handleSave}
+              className="flex-1 py-3.5 rounded-full font-semibold text-sm text-white transition-all duration-150 active:scale-95 cursor-pointer"
               style={{ backgroundColor: config.color }}
             >
-              Download
-            </a>
+              Save
+            </button>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 pb-4">
@@ -516,7 +600,8 @@ function RecordScreen({ config, mode, onBack }) {
             )}
             <button
               onClick={handleRecord}
-              className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 hover:scale-110 active:scale-90 cursor-pointer"
+              disabled={!isVoiceover && !cameraReady && !recording}
+              className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 hover:scale-110 active:scale-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               style={{ backgroundColor: config.color }}
             >
               {recording
@@ -524,6 +609,9 @@ function RecordScreen({ config, mode, onBack }) {
                 : <div className="w-7 h-7 bg-white rounded-full" />
               }
             </button>
+            {!isVoiceover && !cameraReady && !recording && !camError && (
+              <p className="text-xs text-ink-light">Starting camera...</p>
+            )}
           </div>
         )}
 
