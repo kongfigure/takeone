@@ -74,6 +74,92 @@ function formatTime(s) {
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
+function countFillerWords(transcript) {
+  if (!transcript) return {}
+  const text = transcript.toLowerCase()
+  const fillers = ['like', 'um', 'uh', 'you know', 'basically', 'literally', 'right', 'okay', 'so']
+  const counts = {}
+  for (const word of fillers) {
+    const regex = new RegExp(`\\b${word}\\b`, 'gi')
+    const matches = text.match(regex)
+    if (matches?.length) counts[word] = matches.length
+  }
+  return counts
+}
+
+function computeWpm(transcript, durationSeconds) {
+  if (!transcript || !durationSeconds) return 0
+  const words = transcript.trim().split(/\s+/).filter(Boolean).length
+  return Math.round((words / durationSeconds) * 60)
+}
+
+async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsSummary, modeLabel, promptText }) {
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('No API key — add VITE_ANTHROPIC_API_KEY to .env.local')
+
+  const totalFillers = Object.values(fillerCounts).reduce((a, b) => a + b, 0)
+  const fillerSummary = totalFillers > 0
+    ? Object.entries(fillerCounts).map(([w, c]) => `"${w}": ${c}`).join(', ')
+    : 'none detected'
+
+  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay.
+
+Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
+{
+  "scores": {
+    "fillerWords": 0-100,
+    "pace": 0-100,
+    "clarity": 0-100,
+    "vocabulary": 0-100,
+    "energy": 0-100,
+    "overall": 0-100
+  },
+  "roastFeedback": [
+    "funny specific roast 1",
+    "funny specific roast 2",
+    "funny specific roast 3"
+  ],
+  "strengths": [
+    "genuine strength 1",
+    "genuine strength 2"
+  ],
+  "topTip": "one actionable specific improvement"
+}
+
+Roast feedback rules: funny but not mean, specific to their actual transcript, reference exact words they said or exact counts, Gen Z energy like a brutally honest friend. Never be generic. If they said "like" 8 times, say exactly that.`
+
+  const userMsg = `Here is the user's recording data:
+- Transcript: ${transcript || '[no transcript captured — audio-only or speech recognition unavailable]'}
+- Duration: ${duration} seconds
+- Words per minute: ${wpm}
+- Filler word count: ${fillerSummary} (total: ${totalFillers})
+- Self-rated: ${ratingsSummary}
+- Mode: ${modeLabel}
+- Prompt they were responding to: ${promptText}
+
+Analyze this and return the JSON.`
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system,
+      messages: [{ role: 'user', content: userMsg }],
+    }),
+  })
+
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  const data = await res.json()
+  return JSON.parse(data.content[0].text)
+}
+
 const BAR_COUNT = 48
 
 function Waveform({ analyser, color }) {
@@ -127,31 +213,39 @@ function Waveform({ analyser, color }) {
   )
 }
 
-function ModeHeader({ config, mode, onBack }) {
+function ModeHeader({ config, mode, onBack, title }) {
   const isVoiceover = mode === 'voiceover'
   return (
     <header className="px-6 py-4" style={{ backgroundColor: config.headerColor }}>
       <div className="max-w-2xl mx-auto flex items-center gap-4">
-        <button
-          onClick={onBack}
-          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
-          style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M10 3L5 8l5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-        <div className="flex items-center gap-2.5">
-          {isVoiceover ? (
-            <svg width="18" height="20" viewBox="0 0 18 20" fill="none">
-              <rect x="5" y="1" width="8" height="12" rx="4" fill="white" />
-              <path d="M1 10c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-              <line x1="9" y1="18" x2="9" y2="20" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
+            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M10 3L5 8l5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
+          </button>
+        )}
+        <div className="flex items-center gap-2.5">
+          {title ? (
+            <span className="text-lg font-extrabold tracking-tight text-white">{title}</span>
           ) : (
-            <span className="text-xl">{config.emoji}</span>
+            <>
+              {isVoiceover ? (
+                <svg width="18" height="20" viewBox="0 0 18 20" fill="none">
+                  <rect x="5" y="1" width="8" height="12" rx="4" fill="white" />
+                  <path d="M1 10c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                  <line x1="9" y1="18" x2="9" y2="20" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <span className="text-xl">{config.emoji}</span>
+              )}
+              <span className="text-lg font-extrabold tracking-tight text-white">{config.label}</span>
+            </>
           )}
-          <span className="text-lg font-extrabold tracking-tight text-white">{config.label}</span>
         </div>
       </div>
     </header>
@@ -215,8 +309,120 @@ function SelectScreen({ config, mode, onRecord, onUpload, navigate }) {
   )
 }
 
-function RecordScreen({ config, mode, onBack }) {
-  const navigate = useNavigate()
+const RATING_OPTIONS = ['Good', 'OK', 'Poor']
+
+const ratingQuestions = {
+  voiceover: [
+    { key: 'q1', label: 'Clarity' },
+    { key: 'q2', label: 'Enthusiasm' },
+    { key: 'q3', label: 'Pacing feel' },
+  ],
+  default: [
+    { key: 'q1', label: 'Eye contact' },
+    { key: 'q2', label: 'Posture' },
+    { key: 'q3', label: 'Expression' },
+  ],
+}
+
+function RatingScreen({ config, mode, onSubmit, onSkip }) {
+  const questions = ratingQuestions[mode] ?? ratingQuestions.default
+  const [answers, setAnswers] = useState({})
+  const allAnswered = questions.every(q => answers[q.key])
+
+  const handleSubmit = () => {
+    const summary = questions.map(q => `${q.label.toLowerCase()} [${answers[q.key]}]`).join(', ')
+    onSubmit(summary)
+  }
+
+  return (
+    <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
+      <ModeHeader config={config} mode={mode} title="Self-check" />
+
+      <main className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 flex flex-col gap-5">
+        <div className="mt-4">
+          <h2 className="text-xl font-extrabold text-ink mb-1">Quick self-check</h2>
+          <p className="text-sm text-ink-light leading-relaxed">
+            Rate yourself honestly — your AI coach uses this to give you real, specific feedback.
+          </p>
+        </div>
+
+        {questions.map(q => (
+          <div key={q.key} className="bg-white rounded-2xl p-5 border" style={{ borderColor: config.color + '33' }}>
+            <p className="text-sm font-bold text-ink mb-3">{q.label}</p>
+            <div className="flex gap-2">
+              {RATING_OPTIONS.map(opt => {
+                const val = opt.toLowerCase()
+                const selected = answers[q.key] === val
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => setAnswers(a => ({ ...a, [q.key]: val }))}
+                    className="flex-1 py-2.5 rounded-full text-sm font-semibold transition-all cursor-pointer border-2"
+                    style={{
+                      backgroundColor: selected ? config.color : 'transparent',
+                      borderColor: selected ? config.color : config.color + '44',
+                      color: selected ? 'white' : config.color,
+                    }}
+                  >
+                    {opt}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+
+        <div className="flex flex-col gap-3 mt-2 pb-4">
+          <button
+            onClick={handleSubmit}
+            disabled={!allAnswered}
+            className="w-full py-4 rounded-full font-bold text-sm text-white transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+            style={{ backgroundColor: config.color }}
+          >
+            Analyze my take →
+          </button>
+          <button
+            onClick={onSkip}
+            className="w-full py-3 text-sm font-semibold transition-all cursor-pointer active:opacity-70"
+            style={{ color: config.color }}
+          >
+            Skip — just save it
+          </button>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+const ANALYZING_MSGS = [
+  'Reviewing your performance…',
+  'Counting those filler words…',
+  'Calibrating the roast…',
+  'Checking your energy…',
+  'Almost ready…',
+]
+
+function AnalyzingScreen({ config }) {
+  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setIdx(i => (i + 1) % ANALYZING_MSGS.length), 1800)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="min-h-screen font-sans flex flex-col items-center justify-center gap-6 px-8" style={{ backgroundColor: config.pageBg }}>
+      <div
+        className="w-16 h-16 rounded-full border-4 animate-spin"
+        style={{ borderColor: config.color + '30', borderTopColor: config.color }}
+      />
+      <div className="text-center">
+        <p className="text-base font-semibold text-ink">{ANALYZING_MSGS[idx]}</p>
+        <p className="text-sm text-ink-light mt-1">Your AI coach is watching 👀</p>
+      </div>
+    </div>
+  )
+}
+
+function RecordScreen({ config, mode, onBack, onSave }) {
   const isVoiceover = mode === 'voiceover'
 
   const [prompt, setPrompt] = useState(() => randomPrompt(mode, null))
@@ -243,6 +449,8 @@ function RecordScreen({ config, mode, onBack }) {
   const chunksRef = useRef([])
   const timerRef = useRef(null)
   const elapsedRef = useRef(0)
+  const recognitionRef = useRef(null)
+  const transcriptRef = useRef('')
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(t => t.stop())
@@ -250,7 +458,7 @@ function RecordScreen({ config, mode, onBack }) {
     setCameraReady(false)
   }
 
-  // Initial camera setup for video modes
+  // Initial camera setup
   useEffect(() => {
     if (isVoiceover) return
     let cancelled = false
@@ -269,7 +477,7 @@ function RecordScreen({ config, mode, onBack }) {
     }
   }, [isVoiceover])
 
-  // Voiceover: mic + analyser + MediaRecorder, keyed to recording state
+  // Voiceover recording
   useEffect(() => {
     if (!isVoiceover) return
 
@@ -319,7 +527,7 @@ function RecordScreen({ config, mode, onBack }) {
     }
   }, [recording, isVoiceover])
 
-  // Timer — tracks elapsed and keeps elapsedRef in sync for capture in onstop callbacks
+  // Timer
   useEffect(() => {
     if (recording) {
       elapsedRef.current = 0
@@ -334,7 +542,7 @@ function RecordScreen({ config, mode, onBack }) {
     return () => clearInterval(timerRef.current)
   }, [recording])
 
-  // Capture thumbnail frame from recorded video
+  // Thumbnail from recorded video
   useEffect(() => {
     if (!recordedUrl || isVoiceover) return
     const vid = document.createElement('video')
@@ -354,10 +562,30 @@ function RecordScreen({ config, mode, onBack }) {
     return () => vid.removeEventListener('seeked', onSeeked)
   }, [recordedUrl, isVoiceover])
 
-  // Ref callback: attaches stream to live video whenever the element mounts or remounts
   const liveVideoRef = el => {
     videoRef.current = el
     if (el && streamRef.current) el.srcObject = streamRef.current
+  }
+
+  const startRecognition = () => {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRec) return
+    const recognition = new SpeechRec()
+    recognition.continuous = true
+    recognition.interimResults = false
+    recognition.onresult = e => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) transcriptRef.current += ' ' + e.results[i][0].transcript
+      }
+    }
+    recognition.onerror = () => {}
+    try { recognition.start() } catch (_) {}
+    recognitionRef.current = recognition
+  }
+
+  const stopRecognition = () => {
+    try { recognitionRef.current?.stop() } catch (_) {}
+    recognitionRef.current = null
   }
 
   const startVideoRecording = () => {
@@ -385,6 +613,7 @@ function RecordScreen({ config, mode, onBack }) {
   const handleRecord = () => {
     if (recording) {
       setRecording(false)
+      stopRecognition()
       if (!isVoiceover) {
         try {
           if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop()
@@ -392,6 +621,7 @@ function RecordScreen({ config, mode, onBack }) {
       }
     } else {
       setNotesOpen(false)
+      transcriptRef.current = ''
       if (recordedUrl) {
         URL.revokeObjectURL(recordedUrl)
         setRecordedUrl(null)
@@ -399,6 +629,7 @@ function RecordScreen({ config, mode, onBack }) {
         setThumbnail(null)
       }
       if (!isVoiceover) startVideoRecording()
+      startRecognition()
       setRecording(true)
     }
   }
@@ -411,11 +642,11 @@ function RecordScreen({ config, mode, onBack }) {
     setDuration(0)
     setElapsed(0)
     elapsedRef.current = 0
+    transcriptRef.current = ''
     if (!isVoiceover) {
       try {
         const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         streamRef.current = s
-        // attach to video element if it's already mounted after re-render
         if (videoRef.current) videoRef.current.srcObject = s
         setCameraReady(true)
         setCamError(null)
@@ -426,21 +657,16 @@ function RecordScreen({ config, mode, onBack }) {
   }
 
   const handleSave = () => {
-    addTake(mode, {
-      id: Date.now().toString(),
-      name: `Take ${getTakes(mode).length + 1}`,
-      score: Math.floor(Math.random() * 30) + 65,
-      favourite: false,
-      date: 'Just now',
-      videoUrl: recordedUrl,
-      mimeType: recordedMime,
+    onSave({
+      recordedUrl,
+      recordedMime,
       thumbnail,
       duration,
+      transcript: transcriptRef.current.trim(),
+      fillerCounts: countFillerWords(transcriptRef.current),
+      wpm: computeWpm(transcriptRef.current, duration),
+      prompt,
     })
-    // store owns the URL now — do not revoke
-    setRecordedUrl(null)
-    setRecordedMime('')
-    navigate(`/collection/${mode}`)
   }
 
   return (
@@ -516,7 +742,7 @@ function RecordScreen({ config, mode, onBack }) {
           </div>
         </div>
 
-        {/* Media area — key props ensure live and playback video are always distinct DOM elements */}
+        {/* Media area */}
         {recordedUrl ? (
           <div
             className={`flex-1 rounded-2xl overflow-hidden border-2 relative min-h-48 ${isVoiceover ? 'bg-white flex flex-col items-center justify-center' : 'bg-black'}`}
@@ -626,6 +852,53 @@ export default function Practice() {
   const config = modeConfig[mode] ?? modeConfig.creator
 
   const [screen, setScreen] = useState('select')
+  const [pendingTake, setPendingTake] = useState(null)
+
+  const finalizeTake = (aiResult) => {
+    const id = Date.now().toString()
+    const score = aiResult?.scores?.overall ?? Math.floor(Math.random() * 25) + 65
+    addTake(mode, {
+      id,
+      name: `Take ${getTakes(mode).length + 1}`,
+      score,
+      favourite: false,
+      date: 'Just now',
+      videoUrl: pendingTake.recordedUrl,
+      mimeType: pendingTake.recordedMime,
+      thumbnail: pendingTake.thumbnail,
+      duration: pendingTake.duration,
+      ...(aiResult && {
+        aiScores: aiResult.scores,
+        roastFeedback: aiResult.roastFeedback,
+        strengths: aiResult.strengths,
+        topTip: aiResult.topTip,
+      }),
+    })
+    navigate(`/playback/${mode}/${id}`)
+  }
+
+  const handleRecordingSaved = (data) => {
+    setPendingTake(data)
+    setScreen('rating')
+  }
+
+  const handleRatingsSubmit = async (ratingsSummary) => {
+    setScreen('analyzing')
+    try {
+      const aiResult = await analyzeWithAI({
+        ...pendingTake,
+        ratingsSummary,
+        modeLabel: config.label,
+        promptText: pendingTake.prompt,
+      })
+      finalizeTake(aiResult)
+    } catch (err) {
+      console.error('AI analysis failed:', err)
+      finalizeTake(null)
+    }
+  }
+
+  const handleSkip = () => finalizeTake(null)
 
   if (screen === 'select') {
     return (
@@ -639,11 +912,27 @@ export default function Practice() {
     )
   }
 
+  if (screen === 'rating') {
+    return (
+      <RatingScreen
+        config={config}
+        mode={mode}
+        onSubmit={handleRatingsSubmit}
+        onSkip={handleSkip}
+      />
+    )
+  }
+
+  if (screen === 'analyzing') {
+    return <AnalyzingScreen config={config} />
+  }
+
   return (
     <RecordScreen
       config={config}
       mode={mode}
       onBack={() => setScreen('select')}
+      onSave={handleRecordingSaved}
     />
   )
 }

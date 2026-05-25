@@ -13,7 +13,7 @@ function scoreColor(score) {
   return '#dc2626'
 }
 
-function getFeedback(score) {
+function getSimpleFeedback(score) {
   if (score >= 85) return { label: 'Excellent', text: "Great delivery! Your pace and energy were on point. Keep it up." }
   if (score >= 75) return { label: 'Good', text: "Solid take. A little more confidence in your delivery will take you far." }
   if (score >= 65) return { label: 'Keep Practicing', text: "You're getting there. Focus on your pacing and filler words." }
@@ -25,6 +25,29 @@ function formatDuration(secs) {
   const m = Math.floor(secs / 60)
   const s = secs % 60
   return m > 0 ? `${m}m ${s}s` : `${s}s`
+}
+
+const scoreLabels = {
+  fillerWords: 'Filler Words',
+  pace: 'Pace',
+  clarity: 'Clarity',
+  vocabulary: 'Vocabulary',
+  energy: 'Energy',
+}
+
+function ScoreBar({ label, value, color }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs text-ink-light w-24 shrink-0">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: color + '20' }}>
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${value}%`, backgroundColor: scoreColor(value) }}
+        />
+      </div>
+      <span className="text-xs font-bold tabular-nums w-7 text-right" style={{ color: scoreColor(value) }}>{value}</span>
+    </div>
+  )
 }
 
 export default function Playback() {
@@ -51,7 +74,8 @@ export default function Playback() {
     )
   }
 
-  const { label: feedbackLabel, text: feedbackText } = getFeedback(take.score)
+  const hasAI = !!take.aiScores
+  const { label: simpleLabel, text: simpleText } = getSimpleFeedback(take.score)
   const dur = formatDuration(take.duration)
 
   return (
@@ -72,7 +96,6 @@ export default function Playback() {
         </div>
       </header>
 
-      {/* Content */}
       <main className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 flex flex-col gap-5">
 
         {/* Media player */}
@@ -98,32 +121,90 @@ export default function Playback() {
         </div>
 
         {/* Score card */}
-        <div className="bg-white rounded-2xl border p-6 flex items-center gap-5" style={{ borderColor: config.color + '33' }}>
-          <div className="text-center shrink-0">
-            <p className="text-4xl font-extrabold tabular-nums leading-none" style={{ color: scoreColor(take.score) }}>{take.score}</p>
-            <p className="text-xs text-ink-light mt-1.5">score</p>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-2 gap-2">
-              <span className="text-sm font-bold" style={{ color: scoreColor(take.score) }}>{feedbackLabel}</span>
-              <span className="text-xs text-ink-light shrink-0">
-                {[dur, take.date].filter(Boolean).join(' · ')}
-              </span>
+        <div className="bg-white rounded-2xl border p-6" style={{ borderColor: config.color + '33' }}>
+          <div className="flex items-center gap-5 mb-4">
+            <div className="text-center shrink-0">
+              <p className="text-4xl font-extrabold tabular-nums leading-none" style={{ color: scoreColor(take.score) }}>{take.score}</p>
+              <p className="text-xs text-ink-light mt-1.5">overall</p>
             </div>
-            <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: config.color + '18' }}>
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${take.score}%`, backgroundColor: scoreColor(take.score) }}
-              />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <span className="text-sm font-bold" style={{ color: scoreColor(take.score) }}>
+                  {hasAI ? 'AI Score' : simpleLabel}
+                </span>
+                <span className="text-xs text-ink-light shrink-0">
+                  {[dur, take.date].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: config.color + '18' }}>
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${take.score}%`, backgroundColor: scoreColor(take.score) }}
+                />
+              </div>
             </div>
           </div>
+
+          {/* Score breakdown */}
+          {hasAI && (
+            <div className="flex flex-col gap-2.5 pt-3 border-t" style={{ borderColor: config.color + '18' }}>
+              {Object.entries(scoreLabels).map(([key, label]) => (
+                take.aiScores[key] != null && (
+                  <ScoreBar key={key} label={label} value={take.aiScores[key]} color={config.color} />
+                )
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Feedback */}
-        <div className="bg-white rounded-2xl border p-6" style={{ borderColor: config.color + '33' }}>
-          <p className="text-sm font-bold text-ink mb-2">Feedback</p>
-          <p className="text-sm text-ink-light leading-relaxed">{feedbackText}</p>
-        </div>
+        {/* Roast feedback */}
+        {hasAI && take.roastFeedback?.length > 0 && (
+          <div className="bg-white rounded-2xl border p-6" style={{ borderColor: config.color + '33' }}>
+            <p className="text-sm font-bold text-ink mb-3">The Real Talk 🔥</p>
+            <div className="flex flex-col gap-3">
+              {take.roastFeedback.map((msg, i) => (
+                <div
+                  key={i}
+                  className="text-sm text-ink leading-relaxed px-4 py-3 rounded-xl"
+                  style={{ backgroundColor: config.color + '0d' }}
+                >
+                  {msg}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Strengths */}
+        {hasAI && take.strengths?.length > 0 && (
+          <div className="bg-white rounded-2xl border p-6" style={{ borderColor: config.color + '33' }}>
+            <p className="text-sm font-bold text-ink mb-3">What worked ✨</p>
+            <div className="flex flex-col gap-2">
+              {take.strengths.map((s, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="text-green-500 mt-0.5 shrink-0 text-sm">✓</span>
+                  <p className="text-sm text-ink leading-relaxed">{s}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Top tip */}
+        {hasAI && take.topTip && (
+          <div className="rounded-2xl p-5" style={{ backgroundColor: config.color + '15', border: `1.5px solid ${config.color}44` }}>
+            <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: config.color }}>Top tip 💡</p>
+            <p className="text-sm font-medium text-ink leading-relaxed">{take.topTip}</p>
+          </div>
+        )}
+
+        {/* Simple feedback fallback (no AI) */}
+        {!hasAI && (
+          <div className="bg-white rounded-2xl border p-6" style={{ borderColor: config.color + '33' }}>
+            <p className="text-sm font-bold text-ink mb-2">Feedback</p>
+            <p className="text-sm text-ink-light leading-relaxed">{simpleText}</p>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex gap-3 pb-4">
