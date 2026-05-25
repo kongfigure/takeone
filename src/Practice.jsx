@@ -126,7 +126,9 @@ Return ONLY a valid JSON object with exactly this structure (no markdown fences,
   "topTip": "one actionable specific improvement"
 }
 
-Roast feedback rules: funny but not mean, specific to their actual transcript, reference exact words they said or exact counts, Gen Z energy like a brutally honest friend. Never be generic. If they said "like" 8 times, say exactly that.`
+Roast feedback rules: funny but not mean, specific to their actual transcript, reference exact words they said or exact counts, Gen Z energy like a brutally honest friend. Never be generic. If they said "like" 8 times, say exactly that.
+
+IMPORTANT — low-effort detection: If the transcript is very short, mostly silence, incoherent, or clearly not a real attempt, give an overall score below 30 and all sub-scores below 40. Roast them specifically for not trying — be funny and direct, e.g. "You recorded 3 seconds of silence and a cough. That's not a take, that's a vibe check." A blank or near-blank recording must NEVER score above 40 overall.`
 
   const userMsg = `Here is the user's recording data:
 - Transcript: ${transcript || '[no transcript captured — audio-only or speech recognition unavailable]'}
@@ -846,6 +848,35 @@ function RecordScreen({ config, mode, onBack, onSave }) {
   )
 }
 
+function ErrorScreen({ config, mode, onRetry }) {
+  return (
+    <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
+      <ModeHeader config={config} mode={mode} onBack={onRetry} />
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8 text-center">
+        <div
+          className="w-20 h-20 rounded-full flex items-center justify-center text-4xl"
+          style={{ backgroundColor: config.color + '18' }}
+        >
+          🎤
+        </div>
+        <div>
+          <p className="text-lg font-extrabold text-ink mb-2">Not enough speech detected</p>
+          <p className="text-sm text-ink-light leading-relaxed max-w-xs mx-auto">
+            We couldn't detect enough speech to analyze. Try recording again and speak clearly for at least 20 seconds.
+          </p>
+        </div>
+        <button
+          onClick={onRetry}
+          className="px-8 py-3.5 rounded-full font-bold text-sm text-white cursor-pointer active:scale-95 transition-all"
+          style={{ backgroundColor: config.color }}
+        >
+          Record again
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function Practice() {
   const { mode } = useParams()
   const navigate = useNavigate()
@@ -883,6 +914,15 @@ export default function Practice() {
   }
 
   const handleRatingsSubmit = async (ratingsSummary) => {
+    // Block analysis if SpeechRecognition is supported but captured < 10 words —
+    // indicates silence, muted mic, or a recording with no real speech.
+    const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+    const wordCount = pendingTake.transcript.trim().split(/\s+/).filter(Boolean).length
+    if (speechSupported && wordCount < 10) {
+      setScreen('error')
+      return
+    }
+
     setScreen('analyzing')
     try {
       const aiResult = await analyzeWithAI({
@@ -925,6 +965,10 @@ export default function Practice() {
 
   if (screen === 'analyzing') {
     return <AnalyzingScreen config={config} />
+  }
+
+  if (screen === 'error') {
+    return <ErrorScreen config={config} mode={mode} onRetry={() => setScreen('record')} />
   }
 
   return (
