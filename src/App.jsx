@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import Practice from './Practice.jsx'
 import Collection from './Collection.jsx'
 import Playback from './Playback.jsx'
+import Onboarding from './Onboarding.jsx'
 import takeoneLogo from './assets/takeone-logo.png'
 
 const recentSessions = [
@@ -80,6 +82,15 @@ function SessionRow({ mode, emoji, date, duration, score }) {
 }
 
 function Dashboard() {
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !localStorage.getItem('takeone_onboarded')
+  )
+
+  const closeOnboarding = () => {
+    localStorage.setItem('takeone_onboarded', '1')
+    setShowOnboarding(false)
+  }
+
   return (
     <div className="min-h-screen bg-cream font-sans">
       <Header />
@@ -121,6 +132,18 @@ function Dashboard() {
         </div>
 
       </main>
+
+      {/* ? button — reopens onboarding at any time */}
+      <button
+        onClick={() => setShowOnboarding(true)}
+        title="What is TakeOne?"
+        className="fixed bottom-6 right-6 w-9 h-9 rounded-full flex items-center justify-center shadow-md cursor-pointer z-40 font-bold text-sm text-white transition-all hover:scale-105 active:scale-95"
+        style={{ backgroundColor: '#D4687A' }}
+      >
+        ?
+      </button>
+
+      {showOnboarding && <Onboarding onClose={closeOnboarding} />}
     </div>
   )
 }

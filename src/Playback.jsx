@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getTake } from './store.js'
 
@@ -34,6 +35,14 @@ const scoreLabels = {
   vocabulary: 'Vocabulary',
   energy: 'Energy',
 }
+
+const metricDetails = [
+  { key: 'clarity',     emoji: '🗣️', label: 'Speech Clarity', desc: 'How clearly and confidently you communicated',              weight: 20 },
+  { key: 'energy',      emoji: '🔋', label: 'Energy',          desc: 'Vocal energy and engagement throughout the take',           weight: 20 },
+  { key: 'pace',        emoji: '⚡', label: 'Pace',             desc: 'Speaking speed — not too fast, not too slow',              weight: 20 },
+  { key: 'fillerWords', emoji: '🧹', label: 'Filler Words',    desc: '"Um", "like", "basically" — the words that slow you down', weight: 20 },
+  { key: 'vocabulary',  emoji: '💬', label: 'Vocabulary',      desc: 'Word choice, variety, and effectiveness',                  weight: 20 },
+]
 
 function ScoreBar({ label, value, color }) {
   return (
@@ -73,6 +82,8 @@ export default function Playback() {
       </div>
     )
   }
+
+  const [calcOpen, setCalcOpen] = useState(false)
 
   const hasAI = !!take.aiScores
   const { label: simpleLabel, text: simpleText } = getSimpleFeedback(take.score)
@@ -203,6 +214,54 @@ export default function Playback() {
           <div className="bg-white rounded-2xl border p-6" style={{ borderColor: config.color + '33' }}>
             <p className="text-sm font-bold text-ink mb-2">Feedback</p>
             <p className="text-sm text-ink-light leading-relaxed">{simpleText}</p>
+          </div>
+        )}
+
+        {/* How was this calculated — collapsible, AI takes only */}
+        {hasAI && (
+          <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: config.color + '33' }}>
+            <button
+              onClick={() => setCalcOpen(o => !o)}
+              className="w-full flex items-center justify-between px-5 py-4 cursor-pointer text-left"
+            >
+              <span className="text-sm font-semibold text-ink">How was this calculated?</span>
+              <svg
+                width="14" height="14" viewBox="0 0 14 14" fill="none"
+                style={{ transform: calcOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 200ms ease', flexShrink: 0 }}
+              >
+                <path d="M2 5l5 5 5-5" stroke={config.color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            <div style={{ maxHeight: calcOpen ? '600px' : '0', overflow: 'hidden', transition: 'max-height 300ms ease' }}>
+              <div className="px-5 pb-5 border-t" style={{ borderColor: config.color + '18' }}>
+                <div className="flex flex-col gap-4 pt-4">
+                  {metricDetails.map(m => {
+                    const score = take.aiScores?.[m.key]
+                    if (score == null) return null
+                    return (
+                      <div key={m.key}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm leading-none">{m.emoji}</span>
+                            <span className="text-sm font-semibold text-ink">{m.label}</span>
+                            <span className="text-xs text-ink-light">· {m.weight}%</span>
+                          </div>
+                          <span className="text-sm font-bold tabular-nums" style={{ color: scoreColor(score) }}>{score}</span>
+                        </div>
+                        <div className="w-full h-1.5 rounded-full mb-1.5" style={{ backgroundColor: config.color + '18' }}>
+                          <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: scoreColor(score) }} />
+                        </div>
+                        <p className="text-xs text-ink-light">{m.desc}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-ink-light text-center mt-4 pt-3 border-t" style={{ borderColor: config.color + '18' }}>
+                  Each metric is weighted equally and combined for your overall score.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
