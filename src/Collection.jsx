@@ -266,6 +266,7 @@ export default function Collection() {
   const rename = (id, name) => updateTake(mode, id, { name })
 
   const goRecord = () => navigate(`/practice/${mode}`)
+  const goUpload = () => navigate(`/practice/${mode}`)
 
   const tabCount = tab => filterTakes(takes, tab).length
 
@@ -345,7 +346,7 @@ export default function Collection() {
             config={config}
             mode={mode}
             onRecord={goRecord}
-            onUpload={() => {}}
+            onUpload={goUpload}
             totalCount={takes.length}
           />
         ) : (
@@ -370,7 +371,7 @@ export default function Collection() {
         open={fabOpen}
         onToggle={e => { e.stopPropagation(); setFabOpen(o => !o) }}
         onRecord={goRecord}
-        onUpload={() => {}}
+        onUpload={goUpload}
       />
     </div>
   )

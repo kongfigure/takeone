@@ -93,6 +93,123 @@ function computeWpm(transcript, durationSeconds) {
   return Math.round((words / durationSeconds) * 60)
 }
 
+async function extractUploadMetadata(blobUrl, mimeType) {
+  return new Promise(resolve => {
+    if (mimeType?.startsWith('audio/')) {
+      const audio = document.createElement('audio')
+      audio.src = blobUrl
+      audio.onloadedmetadata = () => resolve({ duration: Math.round(audio.duration) || 0, thumbnail: null })
+      audio.onerror = () => resolve({ duration: 0, thumbnail: null })
+      audio.load()
+      return
+    }
+    const vid = document.createElement('video')
+    vid.src = blobUrl
+    vid.muted = true
+    vid.playsInline = true
+    vid.onloadedmetadata = () => { vid.currentTime = Math.min(1, vid.duration * 0.1) }
+    vid.onseeked = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 320; canvas.height = 240
+      canvas.getContext('2d').drawImage(vid, 0, 0, 320, 240)
+      resolve({ duration: Math.round(vid.duration) || 0, thumbnail: canvas.toDataURL('image/jpeg', 0.8) })
+    }
+    vid.onerror = () => resolve({ duration: 0, thumbnail: null })
+    vid.load()
+  })
+}
+
+async function analyzeUploadAudio(file) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext
+  if (!AudioCtx) return { speakingRatio: 0.5, energyLevel: 'unknown', estimatedWpm: 70 }
+  const arrayBuffer = await file.arrayBuffer()
+  const ctx = new AudioCtx()
+  let audioBuffer
+  try { audioBuffer = await ctx.decodeAudioData(arrayBuffer) } catch { ctx.close(); return { speakingRatio: 0.5, energyLevel: 'unknown', estimatedWpm: 70 } }
+  ctx.close()
+  const channelData = audioBuffer.getChannelData(0)
+  const frameSize = Math.floor(audioBuffer.sampleRate * 0.1)
+  const threshold = 0.015
+  let speakingFrames = 0, totalFrames = 0, totalRms = 0
+  for (let i = 0; i + frameSize <= channelData.length; i += frameSize) {
+    let sum = 0
+    for (let j = 0; j < frameSize; j++) sum += channelData[i + j] ** 2
+    const rms = Math.sqrt(sum / frameSize)
+    totalRms += rms
+    totalFrames++
+    if (rms > threshold) speakingFrames++
+  }
+  const speakingRatio = totalFrames > 0 ? speakingFrames / totalFrames : 0
+  const avgRms = totalFrames > 0 ? totalRms / totalFrames : 0
+  let energyLevel = 'minimal'
+  if (avgRms > 0.08) energyLevel = 'strong'
+  else if (avgRms > 0.04) energyLevel = 'variable'
+  else if (avgRms > 0.015) energyLevel = 'low'
+  return { speakingRatio, energyLevel, estimatedWpm: Math.round(speakingRatio * 140) }
+}
+
+async function analyzeUploadWithAI({ speakingRatio, energyLevel, estimatedWpm, duration, modeLabel }) {
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('No API key — add VITE_ANTHROPIC_API_KEY to .env.local')
+
+  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay.
+
+Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
+{
+  "scores": {
+    "fillerWords": 0-100,
+    "pace": 0-100,
+    "clarity": 0-100,
+    "vocabulary": 0-100,
+    "energy": 0-100,
+    "overall": 0-100
+  },
+  "roastFeedback": [
+    "funny specific roast 1",
+    "funny specific roast 2",
+    "funny specific roast 3"
+  ],
+  "strengths": [
+    "genuine strength 1",
+    "genuine strength 2"
+  ],
+  "topTip": "one actionable specific improvement"
+}
+
+Note: no live transcript is available — this is an uploaded file. Base scores on the audio signal data provided.
+IMPORTANT: If speaking ratio is below 0.3 (less than 30% speech), score below 40 overall and roast them for mostly silence.`
+
+  const userMsg = `Uploaded recording analysis:
+- Duration: ${duration} seconds
+- Speaking ratio: ${Math.round(speakingRatio * 100)}% active speech
+- Energy level: ${energyLevel} (from audio amplitude)
+- Estimated WPM: ${estimatedWpm}
+- Mode: ${modeLabel}
+- No text transcript available (uploaded file).
+
+Score and give feedback based on these audio signals.`
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system,
+      messages: [{ role: 'user', content: userMsg }],
+    }),
+  })
+
+  if (!res.ok) throw new Error(`API error ${res.status}`)
+  const data = await res.json()
+  return JSON.parse(data.content[0].text)
+}
+
 async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsSummary, modeLabel, promptText }) {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('No API key — add VITE_ANTHROPIC_API_KEY to .env.local')
@@ -254,10 +371,18 @@ function ModeHeader({ config, mode, onBack, title }) {
   )
 }
 
-function SelectScreen({ config, mode, onRecord, onUpload, navigate }) {
+function SelectScreen({ config, mode, onRecord, fileInputRef, onFileSelected, navigate }) {
   return (
     <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
       <ModeHeader config={config} mode={mode} onBack={() => navigate(`/collection/${mode}`)} />
+
+      <input
+        type="file"
+        accept="video/*,audio/*"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        onChange={e => { if (e.target.files[0]) onFileSelected(e.target.files[0]); e.target.value = '' }}
+      />
 
       <main className="flex-1 max-w-2xl mx-auto w-full px-6 flex flex-col items-center justify-center gap-6">
         <div className="text-center mb-4">
@@ -287,13 +412,13 @@ function SelectScreen({ config, mode, onRecord, onUpload, navigate }) {
           </button>
 
           <button
-            onClick={onUpload}
-            className="w-full flex items-center gap-5 bg-white rounded-2xl border-2 p-6 text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] cursor-pointer opacity-60"
-            style={{ borderColor: config.color + '55' }}
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex items-center gap-5 bg-white rounded-2xl border-2 p-6 text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+            style={{ borderColor: config.color + 'aa' }}
           >
             <div
               className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: config.color + '10' }}
+              style={{ backgroundColor: config.color + '18' }}
             >
               <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                 <path d="M11 14V4M11 4L7 8M11 4l4 4" stroke={config.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -302,7 +427,7 @@ function SelectScreen({ config, mode, onRecord, onUpload, navigate }) {
             </div>
             <div>
               <p className="text-base font-bold text-ink">Upload</p>
-              <p className="text-sm text-ink-light mt-0.5">Upload an existing recording to review. <span className="italic">Coming soon.</span></p>
+              <p className="text-sm text-ink-light mt-0.5">Upload an existing video or audio file to get roasted.</p>
             </div>
           </button>
         </div>
@@ -419,6 +544,34 @@ function AnalyzingScreen({ config }) {
       <div className="text-center">
         <p className="text-base font-semibold text-ink">{ANALYZING_MSGS[idx]}</p>
         <p className="text-sm text-ink-light mt-1">Your AI coach is watching 👀</p>
+      </div>
+    </div>
+  )
+}
+
+const UPLOAD_MSGS = [
+  'Watching your video…',
+  'Taking notes… oh wow okay…',
+  'Counting your filler words…',
+  'Preparing your roast…',
+  'Almost ready…',
+]
+
+function UploadingScreen({ config }) {
+  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setIdx(i => (i + 1) % UPLOAD_MSGS.length), 2000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="min-h-screen font-sans flex flex-col items-center justify-center gap-6 px-8" style={{ backgroundColor: config.pageBg }}>
+      <div
+        className="w-16 h-16 rounded-full border-4 animate-spin"
+        style={{ borderColor: config.color + '30', borderTopColor: config.color }}
+      />
+      <div className="text-center">
+        <p className="text-base font-semibold text-ink">{UPLOAD_MSGS[idx]}</p>
+        <p className="text-sm text-ink-light mt-1">Your AI coach is reviewing 📋</p>
       </div>
     </div>
   )
@@ -884,8 +1037,10 @@ export default function Practice() {
 
   const [screen, setScreen] = useState('select')
   const [pendingTake, setPendingTake] = useState(null)
+  const fileInputRef = useRef(null)
 
-  const finalizeTake = (aiResult) => {
+  const finalizeTake = (aiResult, takeOverride = null) => {
+    const take = takeOverride ?? pendingTake
     const id = Date.now().toString()
     const score = aiResult?.scores?.overall ?? Math.floor(Math.random() * 25) + 65
     addTake(mode, {
@@ -894,10 +1049,10 @@ export default function Practice() {
       score,
       favourite: false,
       date: 'Just now',
-      videoUrl: pendingTake.recordedUrl,
-      mimeType: pendingTake.recordedMime,
-      thumbnail: pendingTake.thumbnail,
-      duration: pendingTake.duration,
+      videoUrl: take.recordedUrl,
+      mimeType: take.recordedMime,
+      thumbnail: take.thumbnail,
+      duration: take.duration,
       ...(aiResult && {
         aiScores: aiResult.scores,
         roastFeedback: aiResult.roastFeedback,
@@ -914,8 +1069,6 @@ export default function Practice() {
   }
 
   const handleRatingsSubmit = async (ratingsSummary) => {
-    // Block analysis if SpeechRecognition is supported but captured < 10 words —
-    // indicates silence, muted mic, or a recording with no real speech.
     const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
     const wordCount = pendingTake.transcript.trim().split(/\s+/).filter(Boolean).length
     if (speechSupported && wordCount < 10) {
@@ -940,6 +1093,27 @@ export default function Practice() {
 
   const handleSkip = () => finalizeTake(null)
 
+  const handleFileSelected = async (file) => {
+    setScreen('uploading')
+    const blobUrl = URL.createObjectURL(file)
+    try {
+      const { duration, thumbnail } = await extractUploadMetadata(blobUrl, file.type)
+      const audioData = await analyzeUploadAudio(file)
+      const uploadTake = { recordedUrl: blobUrl, recordedMime: file.type, thumbnail, duration }
+      try {
+        const aiResult = await analyzeUploadWithAI({ ...audioData, duration, modeLabel: config.label })
+        finalizeTake(aiResult, uploadTake)
+      } catch (err) {
+        console.error('Upload AI analysis failed:', err)
+        finalizeTake(null, uploadTake)
+      }
+    } catch (err) {
+      console.error('Upload processing failed:', err)
+      URL.revokeObjectURL(blobUrl)
+      setScreen('select')
+    }
+  }
+
   if (screen === 'select') {
     return (
       <SelectScreen
@@ -947,7 +1121,8 @@ export default function Practice() {
         mode={mode}
         navigate={navigate}
         onRecord={() => setScreen('record')}
-        onUpload={() => {}}
+        fileInputRef={fileInputRef}
+        onFileSelected={handleFileSelected}
       />
     )
   }
@@ -965,6 +1140,10 @@ export default function Practice() {
 
   if (screen === 'analyzing') {
     return <AnalyzingScreen config={config} />
+  }
+
+  if (screen === 'uploading') {
+    return <UploadingScreen config={config} />
   }
 
   if (screen === 'error') {
