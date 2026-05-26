@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { addTake, getTakes } from './store.js'
 
 const modeConfig = {
@@ -368,71 +368,6 @@ function ModeHeader({ config, mode, onBack, title }) {
         </div>
       </div>
     </header>
-  )
-}
-
-function SelectScreen({ config, mode, onRecord, fileInputRef, onFileSelected, navigate }) {
-  return (
-    <div className="min-h-screen font-sans flex flex-col" style={{ backgroundColor: config.pageBg }}>
-      <ModeHeader config={config} mode={mode} onBack={() => navigate(`/collection/${mode}`)} />
-
-      <input
-        type="file"
-        accept="video/*,audio/*"
-        ref={fileInputRef}
-        style={{ display: 'none' }}
-        onChange={e => { if (e.target.files[0]) onFileSelected(e.target.files[0]); e.target.value = '' }}
-      />
-
-      <main className="flex-1 max-w-2xl mx-auto w-full px-6 flex flex-col items-center justify-center gap-6">
-        <div className="text-center mb-4">
-          <p className="text-2xl font-extrabold text-ink mb-2">How do you want to start?</p>
-          <p className="text-sm text-ink-light">Choose to record a new take or upload an existing file.</p>
-        </div>
-
-        <div className="w-full flex flex-col gap-4">
-          <button
-            onClick={onRecord}
-            className="w-full flex items-center gap-5 bg-white rounded-2xl border-2 p-6 text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-            style={{ borderColor: config.color + 'aa' }}
-          >
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: config.color + '18' }}
-            >
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                <circle cx="11" cy="11" r="5" fill={config.color} />
-                <circle cx="11" cy="11" r="9" stroke={config.color} strokeWidth="1.8" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-base font-bold text-ink">Record Now</p>
-              <p className="text-sm text-ink-light mt-0.5">Use your camera or mic to record a new take.</p>
-            </div>
-          </button>
-
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full flex items-center gap-5 bg-white rounded-2xl border-2 p-6 text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-            style={{ borderColor: config.color + 'aa' }}
-          >
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: config.color + '18' }}
-            >
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                <path d="M11 14V4M11 4L7 8M11 4l4 4" stroke={config.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M4 16v1a2 2 0 002 2h10a2 2 0 002-2v-1" stroke={config.color} strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-base font-bold text-ink">Upload</p>
-              <p className="text-sm text-ink-light mt-0.5">Upload an existing video or audio file to get roasted.</p>
-            </div>
-          </button>
-        </div>
-      </main>
-    </div>
   )
 }
 
@@ -1033,11 +968,12 @@ function ErrorScreen({ config, mode, onRetry }) {
 export default function Practice() {
   const { mode } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const config = modeConfig[mode] ?? modeConfig.creator
 
-  const [screen, setScreen] = useState('select')
+  const uploadFile = location.state?.uploadFile ?? null
+  const [screen, setScreen] = useState(() => uploadFile ? 'uploading' : 'record')
   const [pendingTake, setPendingTake] = useState(null)
-  const fileInputRef = useRef(null)
 
   const finalizeTake = (aiResult, takeOverride = null) => {
     const take = takeOverride ?? pendingTake
@@ -1062,6 +998,35 @@ export default function Practice() {
     })
     navigate(`/playback/${mode}/${id}`)
   }
+
+  const handleFileSelected = async (file) => {
+    setScreen('uploading')
+    const blobUrl = URL.createObjectURL(file)
+    try {
+      const { duration, thumbnail } = await extractUploadMetadata(blobUrl, file.type)
+      const audioData = await analyzeUploadAudio(file)
+      const uploadTake = { recordedUrl: blobUrl, recordedMime: file.type, thumbnail, duration }
+      try {
+        const aiResult = await analyzeUploadWithAI({ ...audioData, duration, modeLabel: config.label })
+        finalizeTake(aiResult, uploadTake)
+      } catch (err) {
+        console.error('Upload AI analysis failed:', err)
+        finalizeTake(null, uploadTake)
+      }
+    } catch (err) {
+      console.error('Upload processing failed:', err)
+      URL.revokeObjectURL(blobUrl)
+      setScreen('record')
+    }
+  }
+
+  const uploadProcessedRef = useRef(false)
+  useEffect(() => {
+    if (uploadFile && !uploadProcessedRef.current) {
+      uploadProcessedRef.current = true
+      handleFileSelected(uploadFile)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRecordingSaved = (data) => {
     setPendingTake(data)
@@ -1093,40 +1058,6 @@ export default function Practice() {
 
   const handleSkip = () => finalizeTake(null)
 
-  const handleFileSelected = async (file) => {
-    setScreen('uploading')
-    const blobUrl = URL.createObjectURL(file)
-    try {
-      const { duration, thumbnail } = await extractUploadMetadata(blobUrl, file.type)
-      const audioData = await analyzeUploadAudio(file)
-      const uploadTake = { recordedUrl: blobUrl, recordedMime: file.type, thumbnail, duration }
-      try {
-        const aiResult = await analyzeUploadWithAI({ ...audioData, duration, modeLabel: config.label })
-        finalizeTake(aiResult, uploadTake)
-      } catch (err) {
-        console.error('Upload AI analysis failed:', err)
-        finalizeTake(null, uploadTake)
-      }
-    } catch (err) {
-      console.error('Upload processing failed:', err)
-      URL.revokeObjectURL(blobUrl)
-      setScreen('select')
-    }
-  }
-
-  if (screen === 'select') {
-    return (
-      <SelectScreen
-        config={config}
-        mode={mode}
-        navigate={navigate}
-        onRecord={() => setScreen('record')}
-        fileInputRef={fileInputRef}
-        onFileSelected={handleFileSelected}
-      />
-    )
-  }
-
   if (screen === 'rating') {
     return (
       <RatingScreen
@@ -1154,7 +1085,7 @@ export default function Practice() {
     <RecordScreen
       config={config}
       mode={mode}
-      onBack={() => setScreen('select')}
+      onBack={() => navigate(`/collection/${mode}`)}
       onSave={handleRecordingSaved}
     />
   )

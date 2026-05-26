@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getTakes, updateTake, subscribe } from './store.js'
 
@@ -265,8 +265,10 @@ export default function Collection() {
 
   const rename = (id, name) => updateTake(mode, id, { name })
 
+  const uploadInputRef = useRef(null)
+
   const goRecord = () => navigate(`/practice/${mode}`)
-  const goUpload = () => navigate(`/practice/${mode}`)
+  const goUpload = () => uploadInputRef.current?.click()
 
   const tabCount = tab => filterTakes(takes, tab).length
 
@@ -276,6 +278,18 @@ export default function Collection() {
       style={{ backgroundColor: config.pageBg }}
       onClick={() => fabOpen && setFabOpen(false)}
     >
+      <input
+        type="file"
+        accept="video/*,audio/*"
+        ref={uploadInputRef}
+        style={{ display: 'none' }}
+        onChange={e => {
+          const file = e.target.files[0]
+          e.target.value = ''
+          if (file) navigate(`/practice/${mode}`, { state: { uploadFile: file } })
+        }}
+      />
+
       {/* Header */}
       <header className="px-6 py-4" style={{ backgroundColor: config.headerColor }}>
         <div className="max-w-2xl mx-auto flex items-center gap-4">
