@@ -110,8 +110,12 @@ async function extractUploadMetadata(blobUrl, mimeType) {
     vid.onloadedmetadata = () => { vid.currentTime = Math.min(1, vid.duration * 0.1) }
     vid.onseeked = () => {
       const canvas = document.createElement('canvas')
-      canvas.width = 320; canvas.height = 240
-      canvas.getContext('2d').drawImage(vid, 0, 0, 320, 240)
+      canvas.width = 320; canvas.height = 180
+      const ctx = canvas.getContext('2d')
+      const vw = vid.videoWidth || 320, vh = vid.videoHeight || 180
+      const scale = Math.max(320 / vw, 180 / vh)
+      const dw = vw * scale, dh = vh * scale
+      ctx.drawImage(vid, (320 - dw) / 2, (180 - dh) / 2, dw, dh)
       resolve({ duration: Math.round(vid.duration) || 0, thumbnail: canvas.toDataURL('image/jpeg', 0.8) })
     }
     vid.onerror = () => resolve({ duration: 0, thumbnail: null })
@@ -641,9 +645,12 @@ function RecordScreen({ config, mode, onBack, onSave }) {
     vid.playsInline = true
     const onSeeked = () => {
       const canvas = document.createElement('canvas')
-      canvas.width = 320
-      canvas.height = 240
-      canvas.getContext('2d').drawImage(vid, 0, 0, 320, 240)
+      canvas.width = 320; canvas.height = 180
+      const ctx = canvas.getContext('2d')
+      const vw = vid.videoWidth || 320, vh = vid.videoHeight || 180
+      const scale = Math.max(320 / vw, 180 / vh)
+      const dw = vw * scale, dh = vh * scale
+      ctx.drawImage(vid, (320 - dw) / 2, (180 - dh) / 2, dw, dh)
       setThumbnail(canvas.toDataURL('image/jpeg', 0.8))
     }
     vid.addEventListener('loadeddata', () => { vid.currentTime = 0.5 })

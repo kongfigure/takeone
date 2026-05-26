@@ -29,7 +29,7 @@ function ThumbnailPlaceholder({ config, mode }) {
   const isVoiceover = mode === 'voiceover'
   return (
     <div
-      className="w-full aspect-square flex items-center justify-center"
+      className="w-full aspect-video flex items-center justify-center"
       style={{ background: `linear-gradient(135deg, ${config.color}18 0%, ${config.color}38 100%)` }}
     >
       {isVoiceover ? (
@@ -71,8 +71,8 @@ function PolaroidCard({ take, config, mode, onToggleFavourite, onRename, onClick
     >
       {mode === 'voiceover' ? (
         <div
-          className="w-full flex items-center justify-center gap-0.5 px-3"
-          style={{ height: '52px', background: `linear-gradient(135deg, ${config.color}18 0%, ${config.color}30 100%)` }}
+          className="w-full aspect-video flex items-center justify-center gap-0.5 px-3"
+          style={{ background: `linear-gradient(135deg, ${config.color}18 0%, ${config.color}30 100%)` }}
         >
           {[0.4, 0.7, 1, 0.65, 0.9, 0.5, 0.8, 0.45, 0.75, 1, 0.6, 0.85].map((h, i) => (
             <div
@@ -83,7 +83,7 @@ function PolaroidCard({ take, config, mode, onToggleFavourite, onRename, onClick
           ))}
         </div>
       ) : take.thumbnail ? (
-        <img src={take.thumbnail} alt="" className="w-full aspect-square object-cover" />
+        <img src={take.thumbnail} alt="" className="w-full aspect-video object-cover" />
       ) : (
         <ThumbnailPlaceholder config={config} mode={mode} />
       )}
