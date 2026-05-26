@@ -166,20 +166,36 @@ async function analyzeUploadWithAI({ speakingRatio, energyLevel, estimatedWpm, d
 
 Note: no transcript is available — this is an uploaded file. Base all feedback on the audio signal data provided.
 
-Rules for your response:
-- Roast feedback must be 2-3 sentences each, specific to the numbers you were given
-- Reference exact figures — speaking ratio, WPM, energy level
+Assess TWO tracks independently:
+
+TECHNICAL TRACK — craft execution:
+- fillerWords: estimated filler word density (base on speaking ratio and energy patterns)
+- pace: ideal is 120-160 WPM; use estimatedWpm directly
+- clarity: inferred from energy consistency and speaking ratio
+- completion: did they sustain speech for the full duration?
+
+CREATOR TRACK — engagement and watchability:
+- energy: vocal enthusiasm inferred from amplitude/energy level
+- charisma: compelling presence based on energy variation
+- hookStrength: did the recording start with strong energy?
+- storytellingFlow: sustained narrative arc inferred from speaking consistency
+- watchability: overall would-someone-watch-this score
+
+Rules:
+- Roast feedback must be 2-3 sentences, reference exact figures (WPM, speaking ratio, energy level)
 - Never say "great job" or anything generic
 - Be funny but not mean — like a brutally honest friend who wants you to improve
-- Each roast point must be about something different — energy, pace, silence, delivery
-- If speaking ratio is below 0.3, roast them specifically for recording mostly silence
-- A mostly-silent recording must NEVER score above 40 overall
+- Each roast point must cover something different — energy, pace, silence, delivery
+- If speaking ratio is below 0.3, roast them specifically for mostly silence
+- A mostly-silent recording must NEVER score above 40 on either track
 
 Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
 {
-  "overallScore": 0-100,
-  "scores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "energy": 0-100 },
-  "roastFeedback": ["roast 1 — 2-3 sentences", "roast 2 — 2-3 sentences", "roast 3 — 2-3 sentences"],
+  "technicalScore": 0-100,
+  "creatorScore": 0-100,
+  "technicalScores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "completion": 0-100 },
+  "creatorScores": { "energy": 0-100, "charisma": 0-100, "hookStrength": 0-100, "storytellingFlow": 0-100, "watchability": 0-100 },
+  "roastFeedback": ["2-3 sentence roast 1", "2-3 sentence roast 2", "2-3 sentence roast 3"],
   "strengths": ["specific strength 1", "specific strength 2"],
   "topTip": "one specific actionable tip referencing the audio data"
 }`
@@ -228,20 +244,37 @@ async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsS
 
   const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay. You roast people into getting better.
 
-Rules for your response:
+Assess TWO tracks independently:
+
+TECHNICAL TRACK — craft execution:
+- fillerWords: penalize "um", "like", "basically", "you know" etc. — use exact counts from the data
+- pace: ideal is 120-160 WPM; score based on the provided WPM
+- clarity: clear articulation, coherent sentences, logical structure
+- completion: did they fully answer the prompt, or bail out early?
+
+CREATOR TRACK — engagement and watchability:
+- energy: vocal enthusiasm, variation, and liveliness in their delivery
+- charisma: magnetic, compelling presence — do they draw you in?
+- hookStrength: did the first 5-10 seconds grab attention?
+- storytellingFlow: narrative arc, emotional beats, smooth transitions
+- watchability: would a stranger watch this to the end?
+
+Rules:
 - Roast feedback must be 2-3 sentences each, specific to their actual words and numbers
 - Always reference exact counts — if they said "like" 8 times, say exactly that
 - Never say "great job" or anything generic
 - Be funny but not mean — like a brutally honest friend who wants you to improve
 - If transcript is under 20 words, roast them specifically for barely trying
-- Each roast point must be about something different — filler words, energy, pace, structure, eye contact
-- A blank or near-blank recording must NEVER score above 40 overall
+- Each roast point must cover something different — filler words, energy, pace, structure, hook
+- A blank or near-blank recording must NEVER score above 40 on either track
 
 Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
 {
-  "overallScore": 0-100,
-  "scores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "energy": 0-100 },
-  "roastFeedback": ["roast 1 — 2-3 sentences", "roast 2 — 2-3 sentences", "roast 3 — 2-3 sentences"],
+  "technicalScore": 0-100,
+  "creatorScore": 0-100,
+  "technicalScores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "completion": 0-100 },
+  "creatorScores": { "energy": 0-100, "charisma": 0-100, "hookStrength": 0-100, "storytellingFlow": 0-100, "watchability": 0-100 },
+  "roastFeedback": ["2-3 sentence roast 1", "2-3 sentence roast 2", "2-3 sentence roast 3"],
   "strengths": ["specific strength 1", "specific strength 2"],
   "topTip": "one specific actionable tip referencing something they actually said"
 }`
@@ -979,7 +1012,11 @@ export default function Practice() {
   const finalizeTake = (aiResult, takeOverride = null) => {
     const take = takeOverride ?? pendingTake
     const id = Date.now().toString()
-    const score = aiResult?.overallScore ?? Math.floor(Math.random() * 25) + 65
+    const modeWeights = { creator: [0.6, 0.4], interview: [0.3, 0.7], voiceover: [0.5, 0.5] }
+    const [cw, tw] = modeWeights[mode] ?? [0.5, 0.5]
+    const score = aiResult?.technicalScore != null && aiResult?.creatorScore != null
+      ? Math.round(cw * aiResult.creatorScore + tw * aiResult.technicalScore)
+      : Math.floor(Math.random() * 25) + 65
     addTake(mode, {
       id,
       name: `Take ${getTakes(mode).length + 1}`,
@@ -991,7 +1028,10 @@ export default function Practice() {
       thumbnail: take.thumbnail,
       duration: take.duration,
       ...(aiResult && {
-        aiScores: aiResult.scores,
+        technicalScore: aiResult.technicalScore,
+        creatorScore: aiResult.creatorScore,
+        technicalScores: aiResult.technicalScores,
+        creatorScores: aiResult.creatorScores,
         roastFeedback: aiResult.roastFeedback,
         strengths: aiResult.strengths,
         topTip: aiResult.topTip,

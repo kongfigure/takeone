@@ -28,20 +28,25 @@ function formatDuration(secs) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
-const scoreLabels = {
-  fillerWords: 'Filler Words',
-  pace: 'Pace',
-  clarity: 'Clarity',
-  vocabulary: 'Vocabulary',
-  energy: 'Energy',
+const modeWeights = {
+  creator:   { creator: 60, technical: 40, label: '60% Creator · 40% Technical' },
+  interview: { creator: 30, technical: 70, label: '70% Technical · 30% Creator' },
+  voiceover: { creator: 50, technical: 50, label: '50% Creator · 50% Technical' },
 }
 
-const metricDetails = [
-  { key: 'clarity',     emoji: '🗣️', label: 'Speech Clarity', desc: 'How clearly and confidently you communicated',              weight: 20 },
-  { key: 'energy',      emoji: '🔋', label: 'Energy',          desc: 'Vocal energy and engagement throughout the take',           weight: 20 },
-  { key: 'pace',        emoji: '⚡', label: 'Pace',             desc: 'Speaking speed — not too fast, not too slow',              weight: 20 },
-  { key: 'fillerWords', emoji: '🧹', label: 'Filler Words',    desc: '"Um", "like", "basically" — the words that slow you down', weight: 20 },
-  { key: 'vocabulary',  emoji: '💬', label: 'Vocabulary',      desc: 'Word choice, variety, and effectiveness',                  weight: 20 },
+const technicalMetrics = [
+  { key: 'fillerWords', emoji: '🧹', label: 'Filler Words',   desc: '"Um", "like", "basically" — words that break your flow' },
+  { key: 'pace',        emoji: '⚡', label: 'Pace',            desc: 'Speaking speed — ideal is 120-160 WPM' },
+  { key: 'clarity',     emoji: '🗣️', label: 'Clarity',        desc: 'Clear articulation, coherent sentences, logical structure' },
+  { key: 'completion',  emoji: '✅', label: 'Completion',      desc: 'Did you fully answer the prompt without bailing?' },
+]
+
+const creatorMetrics = [
+  { key: 'energy',          emoji: '🔋', label: 'Energy',           desc: 'Vocal enthusiasm, variation, and liveliness' },
+  { key: 'charisma',        emoji: '✨', label: 'Charisma',          desc: 'Magnetic, compelling presence — do you draw people in?' },
+  { key: 'hookStrength',    emoji: '🎣', label: 'Hook Strength',     desc: 'Did the first 5-10 seconds grab attention?' },
+  { key: 'storytellingFlow',emoji: '📖', label: 'Storytelling Flow', desc: 'Narrative arc, emotional beats, smooth transitions' },
+  { key: 'watchability',    emoji: '👁️', label: 'Watchability',     desc: 'Would a stranger watch this to the end?' },
 ]
 
 function ScoreBar({ label, value, color }) {
@@ -85,7 +90,9 @@ export default function Playback() {
 
   const [calcOpen, setCalcOpen] = useState(false)
 
-  const hasAI = !!take.aiScores
+  const hasDualScore = !!(take.technicalScores && take.creatorScores)
+  const hasAI = hasDualScore || !!take.aiScores
+  const weights = modeWeights[mode] ?? modeWeights.voiceover
   const { label: simpleLabel, text: simpleText } = getSimpleFeedback(take.score)
   const dur = formatDuration(take.duration)
 
@@ -131,42 +138,61 @@ export default function Playback() {
           )}
         </div>
 
-        {/* Score card */}
+        {/* Confidence score card */}
         <div className="bg-white rounded-2xl border p-6" style={{ borderColor: config.color + '33' }}>
-          <div className="flex items-center gap-5 mb-4">
+          <div className="flex items-center gap-5">
             <div className="text-center shrink-0">
               <p className="text-4xl font-extrabold tabular-nums leading-none" style={{ color: scoreColor(take.score) }}>{take.score}</p>
-              <p className="text-xs text-ink-light mt-1.5">overall</p>
+              <p className="text-xs text-ink-light mt-1.5">confidence</p>
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-2 gap-2">
                 <span className="text-sm font-bold" style={{ color: scoreColor(take.score) }}>
-                  {hasAI ? 'AI Score' : simpleLabel}
+                  {hasAI ? 'Confidence Score' : simpleLabel}
                 </span>
                 <span className="text-xs text-ink-light shrink-0">
                   {[dur, take.date].filter(Boolean).join(' · ')}
                 </span>
               </div>
               <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: config.color + '18' }}>
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${take.score}%`, backgroundColor: scoreColor(take.score) }}
-                />
+                <div className="h-full rounded-full" style={{ width: `${take.score}%`, backgroundColor: scoreColor(take.score) }} />
+              </div>
+              {hasDualScore && (
+                <p className="text-xs text-ink-light mt-1.5">{weights.label}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Dual score tracks */}
+        {hasDualScore && (
+          <div className="grid grid-cols-2 gap-3">
+            {/* Technical */}
+            <div className="bg-white rounded-2xl border p-4" style={{ borderColor: config.color + '33' }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-light">Technical</p>
+                <span className="text-xl font-extrabold tabular-nums" style={{ color: scoreColor(take.technicalScore) }}>{take.technicalScore}</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {technicalMetrics.map(m => take.technicalScores[m.key] != null && (
+                  <ScoreBar key={m.key} label={m.label} value={take.technicalScores[m.key]} color={config.color} />
+                ))}
+              </div>
+            </div>
+            {/* Creator */}
+            <div className="bg-white rounded-2xl border p-4" style={{ borderColor: config.color + '33' }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-light">Creator</p>
+                <span className="text-xl font-extrabold tabular-nums" style={{ color: scoreColor(take.creatorScore) }}>{take.creatorScore}</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {creatorMetrics.map(m => take.creatorScores[m.key] != null && (
+                  <ScoreBar key={m.key} label={m.label} value={take.creatorScores[m.key]} color={config.color} />
+                ))}
               </div>
             </div>
           </div>
-
-          {/* Score breakdown */}
-          {hasAI && (
-            <div className="flex flex-col gap-2.5 pt-3 border-t" style={{ borderColor: config.color + '18' }}>
-              {Object.entries(scoreLabels).map(([key, label]) => (
-                take.aiScores[key] != null && (
-                  <ScoreBar key={key} label={label} value={take.aiScores[key]} color={config.color} />
-                )
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Roast feedback */}
         {hasAI && take.roastFeedback?.length > 0 && (
@@ -218,7 +244,7 @@ export default function Playback() {
         )}
 
         {/* How was this calculated — collapsible, AI takes only */}
-        {hasAI && (
+        {hasDualScore && (
           <div className="bg-white rounded-2xl border overflow-hidden" style={{ borderColor: config.color + '33' }}>
             <button
               onClick={() => setCalcOpen(o => !o)}
@@ -233,23 +259,24 @@ export default function Playback() {
               </svg>
             </button>
 
-            <div style={{ maxHeight: calcOpen ? '600px' : '0', overflow: 'hidden', transition: 'max-height 300ms ease' }}>
+            <div style={{ maxHeight: calcOpen ? '900px' : '0', overflow: 'hidden', transition: 'max-height 350ms ease' }}>
               <div className="px-5 pb-5 border-t" style={{ borderColor: config.color + '18' }}>
-                <div className="flex flex-col gap-4 pt-4">
-                  {metricDetails.map(m => {
-                    const score = take.aiScores?.[m.key]
+
+                <p className="text-xs font-bold uppercase tracking-widest mt-4 mb-3" style={{ color: config.color }}>Technical Track</p>
+                <div className="flex flex-col gap-3 mb-5">
+                  {technicalMetrics.map(m => {
+                    const score = take.technicalScores?.[m.key]
                     if (score == null) return null
                     return (
                       <div key={m.key}>
-                        <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <span className="text-sm leading-none">{m.emoji}</span>
                             <span className="text-sm font-semibold text-ink">{m.label}</span>
-                            <span className="text-xs text-ink-light">· {m.weight}%</span>
                           </div>
                           <span className="text-sm font-bold tabular-nums" style={{ color: scoreColor(score) }}>{score}</span>
                         </div>
-                        <div className="w-full h-1.5 rounded-full mb-1.5" style={{ backgroundColor: config.color + '18' }}>
+                        <div className="w-full h-1.5 rounded-full mb-1" style={{ backgroundColor: config.color + '18' }}>
                           <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: scoreColor(score) }} />
                         </div>
                         <p className="text-xs text-ink-light">{m.desc}</p>
@@ -257,8 +284,32 @@ export default function Playback() {
                     )
                   })}
                 </div>
-                <p className="text-xs text-ink-light text-center mt-4 pt-3 border-t" style={{ borderColor: config.color + '18' }}>
-                  Each metric is weighted equally and combined for your overall score.
+
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: config.color }}>Creator Track</p>
+                <div className="flex flex-col gap-3">
+                  {creatorMetrics.map(m => {
+                    const score = take.creatorScores?.[m.key]
+                    if (score == null) return null
+                    return (
+                      <div key={m.key}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm leading-none">{m.emoji}</span>
+                            <span className="text-sm font-semibold text-ink">{m.label}</span>
+                          </div>
+                          <span className="text-sm font-bold tabular-nums" style={{ color: scoreColor(score) }}>{score}</span>
+                        </div>
+                        <div className="w-full h-1.5 rounded-full mb-1" style={{ backgroundColor: config.color + '18' }}>
+                          <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: scoreColor(score) }} />
+                        </div>
+                        <p className="text-xs text-ink-light">{m.desc}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <p className="text-xs text-ink-light text-center mt-5 pt-3 border-t" style={{ borderColor: config.color + '18' }}>
+                  Confidence = {weights.label.toLowerCase()}
                 </p>
               </div>
             </div>
