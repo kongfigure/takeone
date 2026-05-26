@@ -156,32 +156,27 @@ async function analyzeUploadWithAI({ speakingRatio, energyLevel, estimatedWpm, d
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('No API key — add VITE_ANTHROPIC_API_KEY to .env.local')
 
-  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay.
+  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay. You roast people into getting better.
+
+Note: no transcript is available — this is an uploaded file. Base all feedback on the audio signal data provided.
+
+Rules for your response:
+- Roast feedback must be 2-3 sentences each, specific to the numbers you were given
+- Reference exact figures — speaking ratio, WPM, energy level
+- Never say "great job" or anything generic
+- Be funny but not mean — like a brutally honest friend who wants you to improve
+- Each roast point must be about something different — energy, pace, silence, delivery
+- If speaking ratio is below 0.3, roast them specifically for recording mostly silence
+- A mostly-silent recording must NEVER score above 40 overall
 
 Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
 {
-  "scores": {
-    "fillerWords": 0-100,
-    "pace": 0-100,
-    "clarity": 0-100,
-    "vocabulary": 0-100,
-    "energy": 0-100,
-    "overall": 0-100
-  },
-  "roastFeedback": [
-    "funny specific roast 1",
-    "funny specific roast 2",
-    "funny specific roast 3"
-  ],
-  "strengths": [
-    "genuine strength 1",
-    "genuine strength 2"
-  ],
-  "topTip": "one actionable specific improvement"
-}
-
-Note: no live transcript is available — this is an uploaded file. Base scores on the audio signal data provided.
-IMPORTANT: If speaking ratio is below 0.3 (less than 30% speech), score below 40 overall and roast them for mostly silence.`
+  "overallScore": 0-100,
+  "scores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "energy": 0-100 },
+  "roastFeedback": ["roast 1 — 2-3 sentences", "roast 2 — 2-3 sentences", "roast 3 — 2-3 sentences"],
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "topTip": "one specific actionable tip referencing the audio data"
+}`
 
   const userMsg = `Uploaded recording analysis:
 - Duration: ${duration} seconds
@@ -203,7 +198,7 @@ Score and give feedback based on these audio signals.`
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system,
       messages: [{ role: 'user', content: userMsg }],
     }),
@@ -223,44 +218,33 @@ async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsS
     ? Object.entries(fillerCounts).map(([w, c]) => `"${w}": ${c}`).join(', ')
     : 'none detected'
 
-  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay.
+  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay. You roast people into getting better.
+
+Rules for your response:
+- Roast feedback must be 2-3 sentences each, specific to their actual words and numbers
+- Always reference exact counts — if they said "like" 8 times, say exactly that
+- Never say "great job" or anything generic
+- Be funny but not mean — like a brutally honest friend who wants you to improve
+- If transcript is under 20 words, roast them specifically for barely trying
+- Each roast point must be about something different — filler words, energy, pace, structure, eye contact
+- A blank or near-blank recording must NEVER score above 40 overall
 
 Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
 {
-  "scores": {
-    "fillerWords": 0-100,
-    "pace": 0-100,
-    "clarity": 0-100,
-    "vocabulary": 0-100,
-    "energy": 0-100,
-    "overall": 0-100
-  },
-  "roastFeedback": [
-    "funny specific roast 1",
-    "funny specific roast 2",
-    "funny specific roast 3"
-  ],
-  "strengths": [
-    "genuine strength 1",
-    "genuine strength 2"
-  ],
-  "topTip": "one actionable specific improvement"
-}
+  "overallScore": 0-100,
+  "scores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "energy": 0-100 },
+  "roastFeedback": ["roast 1 — 2-3 sentences", "roast 2 — 2-3 sentences", "roast 3 — 2-3 sentences"],
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "topTip": "one specific actionable tip referencing something they actually said"
+}`
 
-Roast feedback rules: funny but not mean, specific to their actual transcript, reference exact words they said or exact counts, Gen Z energy like a brutally honest friend. Never be generic. If they said "like" 8 times, say exactly that.
-
-IMPORTANT — low-effort detection: If the transcript is very short, mostly silence, incoherent, or clearly not a real attempt, give an overall score below 30 and all sub-scores below 40. Roast them specifically for not trying — be funny and direct, e.g. "You recorded 3 seconds of silence and a cough. That's not a take, that's a vibe check." A blank or near-blank recording must NEVER score above 40 overall.`
-
-  const userMsg = `Here is the user's recording data:
-- Transcript: ${transcript || '[no transcript captured — audio-only or speech recognition unavailable]'}
-- Duration: ${duration} seconds
-- Words per minute: ${wpm}
-- Filler word count: ${fillerSummary} (total: ${totalFillers})
-- Self-rated: ${ratingsSummary}
-- Mode: ${modeLabel}
-- Prompt they were responding to: ${promptText}
-
-Analyze this and return the JSON.`
+  const userMsg = `Transcript: ${transcript || '[no transcript captured — audio-only or speech recognition unavailable]'}
+Duration: ${duration} seconds
+Words per minute: ${wpm}
+Filler words found: ${totalFillers} total — breakdown: ${fillerSummary}
+Self-rating: ${ratingsSummary}
+Mode: ${modeLabel}
+Prompt they were responding to: ${promptText}`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -272,7 +256,7 @@ Analyze this and return the JSON.`
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system,
       messages: [{ role: 'user', content: userMsg }],
     }),
@@ -985,7 +969,7 @@ export default function Practice() {
   const finalizeTake = (aiResult, takeOverride = null) => {
     const take = takeOverride ?? pendingTake
     const id = Date.now().toString()
-    const score = aiResult?.scores?.overall ?? Math.floor(Math.random() * 25) + 65
+    const score = aiResult?.overallScore ?? Math.floor(Math.random() * 25) + 65
     addTake(mode, {
       id,
       name: `Take ${getTakes(mode).length + 1}`,
