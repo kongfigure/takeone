@@ -158,39 +158,37 @@ async function analyzeUploadAudio(file) {
   return { speakingRatio, energyLevel, estimatedWpm: Math.round(speakingRatio * 140) }
 }
 
-async function analyzeUploadWithAI({ speakingRatio, energyLevel, estimatedWpm, duration, modeLabel }) {
+async function analyzeUploadWithAI({ speakingRatio, energyLevel, estimatedWpm, duration, modeLabel, mode }) {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('No API key — add VITE_ANTHROPIC_API_KEY to .env.local')
 
-  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay. You roast people into getting better.
+  const isInterview = mode === 'interview'
 
-Note: no transcript is available — this is an uploaded file. Base all feedback on the audio signal data provided.
-
-Assess TWO tracks independently:
-
-TECHNICAL TRACK — craft execution:
-- fillerWords: estimated filler word density (base on speaking ratio and energy patterns)
-- pace: ideal is 120-160 WPM; use estimatedWpm directly
-- clarity: inferred from energy consistency and speaking ratio
-- completion: did they sustain speech for the full duration?
-
-CREATOR TRACK — engagement and watchability:
+  const secondaryTrack = isInterview
+    ? `INTERVIEW TRACK — evaluate like a hiring manager, not a content creator:
+- professionalScore: structure, specificity, and overall professional presence
+- structureScore: did the answer have a clear beginning, middle, end (STAR method or similar)?
+- specificityScore: concrete specific examples vs vague buzzwords and generalities
+- composure: confident and composed vs nervous, rushed, or filler-heavy
+- impression: would a hiring manager be impressed (90+), neutral (60-89), or concerned (<60)?`
+    : `CREATOR TRACK — engagement and watchability (infer from audio signals):
 - energy: vocal enthusiasm inferred from amplitude/energy level
 - charisma: compelling presence based on energy variation
 - hookStrength: did the recording start with strong energy?
 - storytellingFlow: sustained narrative arc inferred from speaking consistency
-- watchability: overall would-someone-watch-this score
+- watchability: overall would-someone-watch-this score`
 
-Rules:
-- Roast feedback must be 2-3 sentences, reference exact figures (WPM, speaking ratio, energy level)
-- Never say "great job" or anything generic
-- Be funny but not mean — like a brutally honest friend who wants you to improve
-- Each roast point must cover something different — energy, pace, silence, delivery
-- If speaking ratio is below 0.3, roast them specifically for mostly silence
-- A mostly-silent recording must NEVER score above 40 on either track
-
-Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
-{
+  const jsonStructure = isInterview
+    ? `{
+  "technicalScore": 0-100,
+  "interviewScore": 0-100,
+  "technicalScores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "completion": 0-100 },
+  "interviewScores": { "professionalScore": 0-100, "structureScore": 0-100, "specificityScore": 0-100, "composure": 0-100, "impression": 0-100 },
+  "roastFeedback": ["2-3 sentence interview-specific roast 1", "2-3 sentence roast 2", "2-3 sentence roast 3"],
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "topTip": "one specific actionable interview tip"
+}`
+    : `{
   "technicalScore": 0-100,
   "creatorScore": 0-100,
   "technicalScores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "completion": 0-100 },
@@ -199,6 +197,32 @@ Return ONLY a valid JSON object with exactly this structure (no markdown fences,
   "strengths": ["specific strength 1", "specific strength 2"],
   "topTip": "one specific actionable tip referencing the audio data"
 }`
+
+  const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay. You roast people into getting better.
+
+Note: no transcript is available — this is an uploaded file. Base all feedback on the audio signal data provided.
+
+Assess TWO tracks independently:
+
+TECHNICAL TRACK — craft execution:
+- fillerWords: estimated filler word density based on speaking ratio and energy patterns
+- pace: ideal is 120-160 WPM; use estimatedWpm directly
+- clarity: inferred from energy consistency and speaking ratio
+- completion: did they sustain speech for the full duration?
+
+${secondaryTrack}
+
+Rules:
+- Roast feedback must be 2-3 sentences, reference exact figures (WPM, speaking ratio, energy level)
+- Never say "great job" or anything generic
+- Each roast point must cover something different — energy, pace, silence, delivery${isInterview ? `
+- Reference hiring managers, offer letters, and interview context specifically
+- Keep the humor interview-coded — e.g. "No offer letter is coming after that energy level"` : ''}
+- If speaking ratio is below 0.3, roast them specifically for mostly silence
+- A mostly-silent recording must NEVER score above 40 on either track
+
+Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
+${jsonStructure}`
 
   const userMsg = `Uploaded recording analysis:
 - Duration: ${duration} seconds
@@ -233,7 +257,7 @@ Score and give feedback based on these audio signals.`
   return parseAIResponse(raw)
 }
 
-async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsSummary, modeLabel, promptText }) {
+async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsSummary, modeLabel, promptText, mode }) {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('No API key — add VITE_ANTHROPIC_API_KEY to .env.local')
 
@@ -241,6 +265,50 @@ async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsS
   const fillerSummary = totalFillers > 0
     ? Object.entries(fillerCounts).map(([w, c]) => `"${w}": ${c}`).join(', ')
     : 'none detected'
+
+  const isInterview = mode === 'interview'
+
+  const secondaryTrack = isInterview
+    ? `INTERVIEW TRACK — evaluate like a hiring manager, not a content creator:
+- professionalScore: overall professional presence, structure, and composure (0-100)
+- structureScore: did the answer follow STAR method or have a clear beginning, middle, end? (0-100)
+- specificityScore: concrete specific examples vs vague buzzwords and generalities (0-100)
+- composure: confident and composed vs nervous, rushed, or filler-heavy (0-100)
+- impression: would a hiring manager be impressed (90+), neutral (60-89), or concerned (<60)? (0-100)`
+    : `CREATOR TRACK — engagement and watchability:
+- energy: vocal enthusiasm, variation, and liveliness in their delivery
+- charisma: magnetic, compelling presence — do they draw you in?
+- hookStrength: did the first 5-10 seconds grab attention?
+- storytellingFlow: narrative arc, emotional beats, smooth transitions
+- watchability: would a stranger watch this to the end?`
+
+  const roastRules = isInterview
+    ? `- Reference hiring managers, offer letters, first impressions, and interview context specifically
+- Keep the humor interview-coded — e.g. "A hiring manager would've stopped listening after that opener", "No offer letter is coming after that vague non-answer"
+- Call out generic buzzwords ("I'm a team player", "I love challenges") as the red flags they are
+- If they didn't give specific examples, name exactly what was missing`
+    : `- Be funny but not mean — like a brutally honest friend who wants you to improve
+- Each roast point must cover something different — filler words, energy, pace, structure, hook`
+
+  const jsonStructure = isInterview
+    ? `{
+  "technicalScore": 0-100,
+  "interviewScore": 0-100,
+  "technicalScores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "completion": 0-100 },
+  "interviewScores": { "professionalScore": 0-100, "structureScore": 0-100, "specificityScore": 0-100, "composure": 0-100, "impression": 0-100 },
+  "roastFeedback": ["2-3 sentence interview-specific roast 1", "2-3 sentence roast 2", "2-3 sentence roast 3"],
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "topTip": "one specific actionable interview tip"
+}`
+    : `{
+  "technicalScore": 0-100,
+  "creatorScore": 0-100,
+  "technicalScores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "completion": 0-100 },
+  "creatorScores": { "energy": 0-100, "charisma": 0-100, "hookStrength": 0-100, "storytellingFlow": 0-100, "watchability": 0-100 },
+  "roastFeedback": ["2-3 sentence roast 1", "2-3 sentence roast 2", "2-3 sentence roast 3"],
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "topTip": "one specific actionable tip referencing something they actually said"
+}`
 
   const system = `You are TakeOne's AI coach — brutally honest, specific, and funny like a Gen Z Gordon Ramsay. You roast people into getting better.
 
@@ -252,32 +320,18 @@ TECHNICAL TRACK — craft execution:
 - clarity: clear articulation, coherent sentences, logical structure
 - completion: did they fully answer the prompt, or bail out early?
 
-CREATOR TRACK — engagement and watchability:
-- energy: vocal enthusiasm, variation, and liveliness in their delivery
-- charisma: magnetic, compelling presence — do they draw you in?
-- hookStrength: did the first 5-10 seconds grab attention?
-- storytellingFlow: narrative arc, emotional beats, smooth transitions
-- watchability: would a stranger watch this to the end?
+${secondaryTrack}
 
 Rules:
 - Roast feedback must be 2-3 sentences each, specific to their actual words and numbers
 - Always reference exact counts — if they said "like" 8 times, say exactly that
 - Never say "great job" or anything generic
-- Be funny but not mean — like a brutally honest friend who wants you to improve
 - If transcript is under 20 words, roast them specifically for barely trying
-- Each roast point must cover something different — filler words, energy, pace, structure, hook
+${roastRules}
 - A blank or near-blank recording must NEVER score above 40 on either track
 
 Return ONLY a valid JSON object with exactly this structure (no markdown fences, no extra text):
-{
-  "technicalScore": 0-100,
-  "creatorScore": 0-100,
-  "technicalScores": { "fillerWords": 0-100, "pace": 0-100, "clarity": 0-100, "completion": 0-100 },
-  "creatorScores": { "energy": 0-100, "charisma": 0-100, "hookStrength": 0-100, "storytellingFlow": 0-100, "watchability": 0-100 },
-  "roastFeedback": ["2-3 sentence roast 1", "2-3 sentence roast 2", "2-3 sentence roast 3"],
-  "strengths": ["specific strength 1", "specific strength 2"],
-  "topTip": "one specific actionable tip referencing something they actually said"
-}`
+${jsonStructure}`
 
   const userMsg = `Transcript: ${transcript || '[no transcript captured — audio-only or speech recognition unavailable]'}
 Duration: ${duration} seconds
@@ -1014,8 +1068,9 @@ export default function Practice() {
     const id = Date.now().toString()
     const modeWeights = { creator: [0.6, 0.4], interview: [0.3, 0.7], voiceover: [0.5, 0.5] }
     const [cw, tw] = modeWeights[mode] ?? [0.5, 0.5]
-    const score = aiResult?.technicalScore != null && aiResult?.creatorScore != null
-      ? Math.round(cw * aiResult.creatorScore + tw * aiResult.technicalScore)
+    const secondaryScore = aiResult?.creatorScore ?? aiResult?.interviewScore
+    const score = aiResult?.technicalScore != null && secondaryScore != null
+      ? Math.round(cw * secondaryScore + tw * aiResult.technicalScore)
       : Math.floor(Math.random() * 25) + 65
     addTake(mode, {
       id,
@@ -1029,9 +1084,9 @@ export default function Practice() {
       duration: take.duration,
       ...(aiResult && {
         technicalScore: aiResult.technicalScore,
-        creatorScore: aiResult.creatorScore,
+        ...(aiResult.creatorScore != null && { creatorScore: aiResult.creatorScore, creatorScores: aiResult.creatorScores }),
+        ...(aiResult.interviewScore != null && { interviewScore: aiResult.interviewScore, interviewScores: aiResult.interviewScores }),
         technicalScores: aiResult.technicalScores,
-        creatorScores: aiResult.creatorScores,
         roastFeedback: aiResult.roastFeedback,
         strengths: aiResult.strengths,
         topTip: aiResult.topTip,
@@ -1048,7 +1103,7 @@ export default function Practice() {
       const audioData = await analyzeUploadAudio(file)
       const uploadTake = { recordedUrl: blobUrl, recordedMime: file.type, thumbnail, duration }
       try {
-        const aiResult = await analyzeUploadWithAI({ ...audioData, duration, modeLabel: config.label })
+        const aiResult = await analyzeUploadWithAI({ ...audioData, duration, modeLabel: config.label, mode })
         finalizeTake(aiResult, uploadTake)
       } catch (err) {
         console.error('Upload AI analysis failed:', err.message ?? err)
@@ -1089,6 +1144,7 @@ export default function Practice() {
         ratingsSummary,
         modeLabel: config.label,
         promptText: pendingTake.prompt,
+        mode,
       })
       finalizeTake(aiResult)
     } catch (err) {

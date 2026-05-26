@@ -29,9 +29,9 @@ function formatDuration(secs) {
 }
 
 const modeWeights = {
-  creator:   { creator: 60, technical: 40, label: '60% Creator · 40% Technical' },
-  interview: { creator: 30, technical: 70, label: '70% Technical · 30% Creator' },
-  voiceover: { creator: 50, technical: 50, label: '50% Creator · 50% Technical' },
+  creator:   { label: '60% Creator · 40% Technical' },
+  interview: { label: '70% Technical · 30% Interview' },
+  voiceover: { label: '50% Creator · 50% Technical' },
 }
 
 const technicalMetrics = [
@@ -47,6 +47,14 @@ const creatorMetrics = [
   { key: 'hookStrength',    emoji: '🎣', label: 'Hook Strength',     desc: 'Did the first 5-10 seconds grab attention?' },
   { key: 'storytellingFlow',emoji: '📖', label: 'Storytelling Flow', desc: 'Narrative arc, emotional beats, smooth transitions' },
   { key: 'watchability',    emoji: '👁️', label: 'Watchability',     desc: 'Would a stranger watch this to the end?' },
+]
+
+const interviewMetrics = [
+  { key: 'professionalScore', emoji: '💼', label: 'Professionalism', desc: 'Structure, specificity, and overall professional presence' },
+  { key: 'structureScore',    emoji: '🏗️', label: 'Structure',       desc: 'Clear beginning, middle, end — STAR method or similar' },
+  { key: 'specificityScore',  emoji: '🎯', label: 'Specificity',      desc: 'Concrete examples vs vague buzzwords and generalities' },
+  { key: 'composure',         emoji: '🧘', label: 'Composure',        desc: 'Confident and composed vs nervous and rushed' },
+  { key: 'impression',        emoji: '🤝', label: 'Impression',       desc: 'Would a hiring manager be impressed, neutral, or concerned?' },
 ]
 
 function ScoreBar({ label, value, color }) {
@@ -90,8 +98,13 @@ export default function Playback() {
 
   const [calcOpen, setCalcOpen] = useState(false)
 
-  const hasDualScore = !!(take.technicalScores && take.creatorScores)
+  const isInterviewTake = !!take.interviewScores
+  const hasDualScore = !!(take.technicalScores && (take.creatorScores || take.interviewScores))
   const hasAI = hasDualScore || !!take.aiScores
+  const secondaryScore = isInterviewTake ? take.interviewScore : take.creatorScore
+  const secondaryScores = isInterviewTake ? take.interviewScores : take.creatorScores
+  const secondaryMetrics = isInterviewTake ? interviewMetrics : creatorMetrics
+  const secondaryLabel = isInterviewTake ? 'Interview' : 'Creator'
   const weights = modeWeights[mode] ?? modeWeights.voiceover
   const { label: simpleLabel, text: simpleText } = getSimpleFeedback(take.score)
   const dur = formatDuration(take.duration)
@@ -179,15 +192,15 @@ export default function Playback() {
                 ))}
               </div>
             </div>
-            {/* Creator */}
+            {/* Secondary track — Interview or Creator */}
             <div className="bg-white rounded-2xl border p-4" style={{ borderColor: config.color + '33' }}>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-bold uppercase tracking-widest text-ink-light">Creator</p>
-                <span className="text-xl font-extrabold tabular-nums" style={{ color: scoreColor(take.creatorScore) }}>{take.creatorScore}</span>
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-light">{secondaryLabel}</p>
+                <span className="text-xl font-extrabold tabular-nums" style={{ color: scoreColor(secondaryScore) }}>{secondaryScore}</span>
               </div>
               <div className="flex flex-col gap-2">
-                {creatorMetrics.map(m => take.creatorScores[m.key] != null && (
-                  <ScoreBar key={m.key} label={m.label} value={take.creatorScores[m.key]} color={config.color} />
+                {secondaryMetrics.map(m => secondaryScores[m.key] != null && (
+                  <ScoreBar key={m.key} label={m.label} value={secondaryScores[m.key]} color={config.color} />
                 ))}
               </div>
             </div>
@@ -285,10 +298,10 @@ export default function Playback() {
                   })}
                 </div>
 
-                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: config.color }}>Creator Track</p>
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: config.color }}>{secondaryLabel} Track</p>
                 <div className="flex flex-col gap-3">
-                  {creatorMetrics.map(m => {
-                    const score = take.creatorScores?.[m.key]
+                  {secondaryMetrics.map(m => {
+                    const score = secondaryScores?.[m.key]
                     if (score == null) return null
                     return (
                       <div key={m.key}>
