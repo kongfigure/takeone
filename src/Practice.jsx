@@ -93,6 +93,12 @@ function computeWpm(transcript, durationSeconds) {
   return Math.round((words / durationSeconds) * 60)
 }
 
+function parseAIResponse(text) {
+  // Claude sometimes wraps JSON in markdown fences despite instructions
+  const stripped = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+  return JSON.parse(stripped)
+}
+
 async function extractUploadMetadata(blobUrl, mimeType) {
   return new Promise(resolve => {
     if (mimeType?.startsWith('audio/')) {
@@ -206,7 +212,9 @@ Score and give feedback based on these audio signals.`
 
   if (!res.ok) throw new Error(`API error ${res.status}`)
   const data = await res.json()
-  return JSON.parse(data.content[0].text)
+  const raw = data.content[0].text
+  console.log('[upload AI raw]', raw)
+  return parseAIResponse(raw)
 }
 
 async function analyzeWithAI({ transcript, duration, fillerCounts, wpm, ratingsSummary, modeLabel, promptText }) {
@@ -264,7 +272,9 @@ Prompt they were responding to: ${promptText}`
 
   if (!res.ok) throw new Error(`API error ${res.status}`)
   const data = await res.json()
-  return JSON.parse(data.content[0].text)
+  const raw = data.content[0].text
+  console.log('[recording AI raw]', raw)
+  return parseAIResponse(raw)
 }
 
 const BAR_COUNT = 48
@@ -1001,7 +1011,7 @@ export default function Practice() {
         const aiResult = await analyzeUploadWithAI({ ...audioData, duration, modeLabel: config.label })
         finalizeTake(aiResult, uploadTake)
       } catch (err) {
-        console.error('Upload AI analysis failed:', err)
+        console.error('Upload AI analysis failed:', err.message ?? err)
         finalizeTake(null, uploadTake)
       }
     } catch (err) {
